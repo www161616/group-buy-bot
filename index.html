@@ -167,7 +167,6 @@ var currentFilter = 'all';
 var botItems = [];
 var botTextMap = {};
 var batchList = [];
-var newItemSeq = 1; // 新品流水號
 var modalCtx = null; // 目前 modal 對應的資料
 
 var EMOJI_LIST = ['\u2764\ufe0f','\ud83d\udea9','\u2728','\ud83c\udf89','\ud83d\udc4d','\ud83d\udd14','\ud83d\ude18','\ud83e\udd70','\ud83c\udf80','\ud83d\udc49','\ud83e\udee0','\ud83c\udf88','\ud83c\udf81','\ud83d\uded2','\ud83d\udc8e','\ud83d\udc8b','\ud83d\udcde','\ud83d\udccd','\ud83d\udccc','\u23f0','\ud83c\udf08','\u26a1','\ud83d\udd25','\ud83d\udca5','\ud83d\udeab','\u2753','\u2757','\u203c\ufe0f','\u2049\ufe0f','\ud83d\udcaf'];
@@ -209,17 +208,23 @@ function refreshBotItems() {
     });
 }
 
-// ── Text cleaning ──
+// ── expandParenChars: 括號字元替換（唯一的清理入口）──
+function expandParenChars(str) {
+  str = str.replace(/\(emoji\)/gi, '');
+  str = str.replace(/\(\$\)/g, '$');
+  str = str.replace(/\(\/\)/g, '/');
+  str = str.replace(/\(!\)/g, '!');
+  str = str.replace(/\(\?\)/g, '?');
+  str = str.replace(/\(heart\)/gi, '');
+  str = str.replace(/\(wink\)/gi, '');
+  str = str.replace(/(\(\d+\))+/g, function(m) { return m.replace(/\((\d+)\)/g, '$1'); });
+  str = str.replace(/\(([a-zA-Z])\)/g, '$1');
+  return str;
+}
+
+// ── cleanText: 用於顯示（展開括號 + 壓縮空行）──
 function cleanText(text) {
-  text = text.replace(/\(emoji\)/gi, '');
-  text = text.replace(/\(\$\)/g, '$');
-  text = text.replace(/\(\/\)/g, '/');
-  text = text.replace(/\(!\)/g, '!');
-  text = text.replace(/\(\?\)/g, '?');
-  text = text.replace(/\(heart\)/gi, '');
-  text = text.replace(/\(wink\)/gi, '');
-  text = text.replace(/(\(\d+\))+/g, function(m) { return m.replace(/\((\d+)\)/g, '$1'); });
-  text = text.replace(/\(([a-zA-Z])\)/g, '$1');
+  text = expandParenChars(text);
   var lines = text.split('\n');
   for (var i = 0; i < lines.length - 1; i++) {
     if (lines[i].trim() === '\u5230\u8ca8\u901a\u77e5' && lines[i+1].trim() && lines[i+1].indexOf('\u7d50\u55ae') === -1) {
@@ -231,50 +236,28 @@ function cleanText(text) {
   return text.trim();
 }
 
-// ── Text parsing ──
-function expandParenChars(str) {
-  // (emoji) → 空
-  str = str.replace(/\(emoji\)/gi, '');
-  // ($) → $
-  str = str.replace(/\(\$\)/g, '$');
-  // (/) → /
-  str = str.replace(/\(\/\)/g, '/');
-  // (!) → !
-  str = str.replace(/\(!\)/g, '!');
-  // (?) → ?
-  str = str.replace(/\(\?\)/g, '?');
-  // (heart) (wink) → 空
-  str = str.replace(/\(heart\)/gi, '');
-  str = str.replace(/\(wink\)/gi, '');
-  // (連續數字) 如 (8)(5) → 85
-  str = str.replace(/(\(\d+\))+/g, function(m) {
-    return m.replace(/\((\d+)\)/g, '$1');
-  });
-  // (單一字母) → 該字母
-  str = str.replace(/\(([a-zA-Z])\)/g, '$1');
-  return str;
-}
-
-function parseBotText(botText) {
-  if (!botText) return { name: '', price: '', date: '', desc: '', subs: [] };
-  // Step 1: expandParenChars on entire text
-  var cleanedText = expandParenChars(botText);
-  // Step 2: split lines
-  var lines = cleanedText.split('\n');
+// ── parseBotText: 必須傳入原始文案（含 (emoji)($) 等）──
+function parseBotText(rawText) {
+  if (!rawText) return { name: '', price: '', date: '', desc: '', subs: [] };
+  // Step 1: 先展開括號
+  var cleaned = expandParenChars(rawText);
+  // Step 2: 在原始文案上逐行掃描（保留 (A) 格式給 subs 偵測）
+  var rawLines = rawText.split('\n');
+  var cleanLines = cleaned.split('\n');
   var name = '', price = '', date = '';
   var subs = [];
-  // Step 3: scan lines
-  for (var i = 0; i < lines.length; i++) {
-    var t = lines[i].trim();
+  for (var i = 0; i < cleanLines.length; i++) {
+    var t = cleanLines[i].trim();
+    var raw = rawLines[i] ? rawLines[i].trim() : '';
     if (!t) continue;
-    // first non-empty line = productName
+    // 第一個非空行 = 品名
     if (!name) { name = t; continue; }
-    // price: $數字 (only first)
+    // 售價: $數字（只取第一個）
     if (!price) {
       var pm = t.match(/\$(\d+)/);
       if (pm) { price = pm[1]; continue; }
     }
-    // date: 數字/數字結單 or short line with 數字/數字
+    // 結單日: M/D結單 or 短行純 M/D
     if (!date) {
       var dm = t.match(/(\d{1,2}\/\d{1,2})\u7d50\u55ae/);
       if (dm) { date = dm[1]; continue; }
@@ -283,15 +266,17 @@ function parseBotText(botText) {
         if (dm2) { date = dm2[1]; continue; }
       }
     }
-    // subs: (A)xxx (B)xxx etc
-    var subMatch = t.match(/^\(([A-Za-z])\)\s*(.+)/);
+    // 款式: 原始行含 (A)xxx (B)xxx（用 raw 偵測，因為清理後 (A) 已變成 A）
+    var subMatch = raw.match(/^\(?([A-Za-z])\)\s*(.+)/);
     if (subMatch) {
-      subs.push({ letter: subMatch[1].toUpperCase(), name: '(' + subMatch[1].toUpperCase() + ')' + subMatch[2].trim() });
+      // 清理款式名稱裡的括號格式
+      var subName = expandParenChars(subMatch[2].trim());
+      subs.push({ letter: subMatch[1].toUpperCase(), name: '(' + subMatch[1].toUpperCase() + ')' + subName });
       continue;
     }
   }
-  // Step 4: desc = entire cleanedText
-  var desc = cleanedText.replace(/\n{3,}/g, '\n\n').trim();
+  // desc = 整段清理後的文案
+  var desc = cleaned.replace(/\n{3,}/g, '\n\n').trim();
   return { name: name, price: price, date: date, desc: desc, subs: subs };
 }
 
@@ -529,7 +514,11 @@ function renderFiltered() {
   if (currentFilter === 'new') items = matchResults.filter(function(r) { return r.isNew; });
   if (!items.length) { list.innerHTML = '<div class="empty-state"><div class="icon">\ud83d\udd0d</div><p>\u6b64\u5206\u985e\u6c92\u6709\u9805\u76ee</p></div>'; return; }
   botTextMap = {};
-  list.innerHTML = items.map(function(r, i) { return renderItem(r, i); }).join('');
+  list.innerHTML = items.map(function(r, i) {
+    // 取得該項目在 matchResults 裡的全局序號（1-based）
+    var globalIdx = matchResults.indexOf(r) + 1;
+    return renderItem(r, i, globalIdx);
+  }).join('');
   items.forEach(function(r, i) {
     var btn = document.getElementById('bot-copy-' + i);
     if (btn) {
@@ -556,14 +545,14 @@ function renderFiltered() {
   });
 }
 
-function renderItem(r, idx) {
+function renderItem(r, idx, seq) {
   var badge = r.isNew
     ? '<span class="badge badge-yellow">\ud83c\udd95 \u65b0\u54c1</span>'
     : '<span class="badge badge-green">\u2705 \u5df2\u6bd4\u5c0d ' + Math.round(r.score * 100) + '%</span>';
   var body = r.isNew ? renderNewBody(r, idx) : renderMatchBody(r, idx);
   return '<div class="result-item" id="item-' + idx + '">' +
     '<div class="result-header" onclick="toggleItem(' + idx + ')">' +
-    '<div class="result-time">' + (r.calItem.time || '\u5168\u5929') + '</div>' +
+    '<div class="result-time">' + seq + '.</div>' +
     '<div class="result-name">' + esc(r.calItem.name) + '</div>' +
     badge + '<div class="result-toggle">\u25bc</div></div>' +
     '<div class="result-body">' + body + '</div></div>';
@@ -684,116 +673,84 @@ function openModal(idx, isNew) {
   var match = r.match;
   var botItem = findBotItem(calItem.name);
   var rawBotText = botItem ? botItem.text : '';
-  var ta = document.getElementById('bot-ta-' + idx);
-  var botText = ta ? ta.value : (rawBotText || '');
 
-  modalCtx = { idx: idx, isNew: isNew, match: match, calItem: calItem };
+  modalCtx = { idx: idx, isNew: isNew, match: match, calItem: calItem, rawBotText: rawBotText };
   document.getElementById('modalTitle').textContent = isNew ? '\ud83c\udd95 \u65b0\u54c1\u4e0a\u67b6' : '\u2705 \u6574\u7406\u4e0a\u67b6';
 
-  // 解析文案
-  var parsed = parseBotText(botText);
+  var tbody = document.getElementById('mStylesBody');
+  tbody.innerHTML = '';
 
-  // 售價：parsed > match > 日曆名稱
-  var price = parsed.price || '';
-  if (!price && match && match.priceMin) price = match.priceMin;
-  if (!price) price = parsePriceFromText(calItem.name);
-
-  // 結單日：parsed > 日曆名稱
-  var closeDate = parsed.date || '';
-  if (!closeDate) closeDate = parseCloseDateFromText(calItem.name);
-
-  // 品名：parsed.name > match.title 清理 > 日曆名稱清理
-  var productName = parsed.name || '';
-  if (!productName && match && match.title) productName = cleanCalName(match.title);
-  if (!productName) productName = cleanCalName(calItem.name);
-
-  // 編號
-  var itemId = '';
-  if (!isNew && match && match.feedId) {
-    itemId = match.feedId.replace(/^g\d+_(sc_|u_|)/, '');
+  if (!isNew && match) {
+    // ── 舊商品：直接用 Supabase 的資料 ──
+    // 商品名稱 = Supabase 的 title（已含 ⬜💰⏰#編號#）
+    document.getElementById('mName').value = match.title || '';
+    // 售價
+    document.getElementById('mPrice').value = match.priceMin || '';
+    // 結單日：從 title 解析
+    var cd = parseCloseDateFromText(match.title || '');
+    document.getElementById('mCloseDate').value = cd;
+    // 款式：直接用 Supabase 的 styles（name 裡已含 #編號#）
+    if (match.styles && match.styles.length) {
+      match.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
+    }
+    // 描述：優先歷史文案 > Bot 文案
+    var histTa = document.getElementById('hist-ta-' + idx);
+    var descText = (histTa && histTa.value) ? histTa.value : '';
+    if (!descText && match.description) descText = match.description;
+    if (!descText && rawBotText) descText = parseBotText(rawBotText).desc;
+    document.getElementById('mDesc').value = descText;
   } else {
-    var tempCode = detectTempCode(productName);
-    var dateStr = document.getElementById('targetDate').value;
-    var yy = dateStr.slice(2,4), mm = dateStr.slice(5,7), dd = dateStr.slice(8,10);
-    itemId = tempCode + yy + mm + dd + String(newItemSeq).padStart(2, '0');
-    newItemSeq++;
-  }
-  // 存到 modalCtx 給溫度 change 用
-  modalCtx.productName = productName;
-  modalCtx.price = price;
-  modalCtx.closeDate = closeDate;
-  modalCtx.itemId = itemId;
+    // ── 新品：從文案解析，編號留空 ──
+    var parsed = parseBotText(rawBotText);
+    var price = parsed.price || '';
+    var closeDate = parsed.date || parseCloseDateFromText(calItem.name);
+    var productName = parsed.name || cleanCalName(calItem.name);
 
-  // 組合完整標題
-  var fullTitle = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae#' + itemId + '#';
-  document.getElementById('mName').value = fullTitle;
-  document.getElementById('mPrice').value = price;
-  document.getElementById('mCloseDate').value = closeDate;
+    // 商品名稱：編號留空讓使用者填
+    var title = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae##';
+    document.getElementById('mName').value = title;
+    document.getElementById('mPrice').value = price;
+    document.getElementById('mCloseDate').value = closeDate;
+    // 款式：從文案解析
+    if (parsed.subs && parsed.subs.length) {
+      parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
+    }
+    // 描述
+    document.getElementById('mDesc').value = parsed.desc || '';
+  }
 
   // 溫度：新品才顯示
   document.getElementById('mTempRow').style.display = isNew ? '' : 'none';
   document.getElementById('mTemp').value = '\u5e38\u6eab';
 
-  // 款式：parsed.subs > match.styles
-  var tbody = document.getElementById('mStylesBody');
-  tbody.innerHTML = '';
-  if (parsed.subs && parsed.subs.length) {
-    parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
-  } else if (match && match.styles && match.styles.length) {
-    match.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
-  }
-
-  // 商品描述：parsed.desc 完整內容
-  document.getElementById('mDesc').value = parsed.desc || botText;
-
   document.getElementById('modalOverlay').classList.add('show');
 }
 
-// 溫度改變時即時更新 mName 裡的編號
-document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('mTemp').addEventListener('change', function() {
-    if (!modalCtx || !modalCtx.isNew) return;
-    var temp = this.value;
-    var tempCode = temp === '\u51b7\u51cd' ? '1' : temp === '\u51b7\u85cf' ? '2' : '3';
-    var dateStr = document.getElementById('targetDate').value;
-    var yy = dateStr.slice(2,4), mm = dateStr.slice(5,7), dd = dateStr.slice(8,10);
-    // 保留原流水號（從現有 itemId 取後兩位）
-    var oldSeq = modalCtx.itemId.slice(-2);
-    var newId = tempCode + yy + mm + dd + oldSeq;
-    modalCtx.itemId = newId;
-    // 重組 mName
-    var fullTitle = '\u2b1c' + modalCtx.productName + '\ud83d\udcb0' + modalCtx.price + '\u23f0' + modalCtx.closeDate + '\u7d50\u55ae#' + newId + '#';
-    document.getElementById('mName').value = fullTitle;
-  });
-});
-
 function reparseDesc() {
+  // 取 textarea 的當前內容重新解析
+  // 使用者可能貼上新的原始文案（含 (A)(B)($) 等），所以直接 parse
   var descEl = document.getElementById('mDesc');
   var text = descEl.value;
   if (!text) return;
   var parsed = parseBotText(text);
   // 更新售價、結單日
-  if (parsed.price) {
-    document.getElementById('mPrice').value = parsed.price;
-    if (modalCtx) modalCtx.price = parsed.price;
-  }
-  if (parsed.date) {
-    document.getElementById('mCloseDate').value = parsed.date;
-    if (modalCtx) modalCtx.closeDate = parsed.date;
-  }
+  if (parsed.price) document.getElementById('mPrice').value = parsed.price;
+  if (parsed.date) document.getElementById('mCloseDate').value = parsed.date;
   // 更新款式
   if (parsed.subs && parsed.subs.length) {
     var tbody = document.getElementById('mStylesBody');
     tbody.innerHTML = '';
     parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
   }
-  // 更新描述為清理後
-  descEl.value = parsed.desc;
-  // 重組 mName
-  if (modalCtx) {
-    if (parsed.name) modalCtx.productName = parsed.name;
-    var fullTitle = '\u2b1c' + modalCtx.productName + '\ud83d\udcb0' + (modalCtx.price || '') + '\u23f0' + (modalCtx.closeDate || '') + '\u7d50\u55ae#' + modalCtx.itemId + '#';
-    document.getElementById('mName').value = fullTitle;
+  // 更新描述為清理後的版本
+  if (parsed.desc) descEl.value = parsed.desc;
+  // 重組 mName（只對新品有意義，舊商品名稱不動）
+  if (modalCtx && modalCtx.isNew) {
+    var productName = parsed.name || '';
+    var price = document.getElementById('mPrice').value;
+    var closeDate = document.getElementById('mCloseDate').value;
+    var title = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae##';
+    document.getElementById('mName').value = title;
   }
 }
 
@@ -900,7 +857,6 @@ function removeBatch(i) {
 function clearBatch() {
   if (!confirm('\u78ba\u5b9a\u8981\u6e05\u9664\u5168\u90e8 ' + batchList.length + ' \u7b46\uff1f')) return;
   batchList = [];
-  newItemSeq = 1;
   renderBatch();
 }
 
@@ -939,26 +895,24 @@ function exportXLS() {
 
   var data = [headers];
   var dateStr = document.getElementById('targetDate').value;
+  // 檔案版本標題含日期（格式：YYYYMMDD）
+  headers[23] = '\u6a94\u6848\u7248\u672c\uff1a' + dateStr.replace(/-/g, '');
 
   batchList.forEach(function(item) {
-    var id = item.customId;
     var hasStyles = item.styles && item.styles.length > 0;
 
-    // 商品名稱：mName 已是完整標題格式
+    // 商品名稱：直接用 Modal 的 mName（已是完整格式）
     var titleStr = item.name;
 
-    // 主要分類
+    // 主要分類：款式名已含 #編號#（來自 Supabase），直接逗號分隔
     var mainCat = '';
     if (hasStyles) {
-      mainCat = item.styles.map(function(s, si) {
-        var styleId = id + si;
-        return s.name + '#' + styleId + '#';
-      }).join(',');
+      mainCat = item.styles.map(function(s) { return s.name; }).join(',');
     } else {
-      mainCat = item.name;
+      mainCat = cleanCalName(item.name);
     }
 
-    // 售價
+    // 售價：每款式一個，逗號分隔
     var priceStr = '';
     if (hasStyles) {
       priceStr = item.styles.map(function(s) { return s.price || item.price; }).join(',');
@@ -974,7 +928,6 @@ function exportXLS() {
         var year = new Date(dateStr).getFullYear();
         var cm = parseInt(parts[0], 10);
         var cd = parseInt(parts[1], 10);
-        // 如果結單月份小於開團月份，跨年
         var orderMonth = parseInt(dateStr.slice(5,7), 10);
         if (cm < orderMonth) year++;
         closeTimeStr = year + '/' + cm + '/' + cd + '  23:55:00 PM';
@@ -986,7 +939,7 @@ function exportXLS() {
 
     var row = [
       '',           // 保留欄位
-      id,           // 自定義編號
+      '',           // 自定義編號（空）
       titleStr,     // 商品名稱
       mainCat,      // 主要分類
       '',           // 細項一
@@ -1008,7 +961,7 @@ function exportXLS() {
       descText,     // 商品描述
       '',           // 商品備註
       '',           // 公開備註
-      '1'           // 檔案版本
+      ''            // 檔案版本（空）
     ];
     data.push(row);
   });
