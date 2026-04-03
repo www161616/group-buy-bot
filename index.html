@@ -136,10 +136,6 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
     <input id="mPrice" type="number">
     <label>結單日（M/D）</label>
     <input id="mCloseDate" type="text" placeholder="例：4/10">
-    <div id="mTempRow">
-      <label>溫度</label>
-      <select id="mTemp"><option value="冷凍">冷凍</option><option value="冷藏">冷藏</option><option value="常溫">常溫</option></select>
-    </div>
     <label>款式明細</label>
     <table class="modal-styles-table" id="mStylesTable">
       <thead><tr><th>款式名稱</th><th>售價</th><th></th></tr></thead>
@@ -147,6 +143,7 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
     </table>
     <button class="btn btn-secondary" onclick="addModalStyleRow('','')" style="margin-top:6px;font-size:12px;">+ 新增款式</button>
     <label>商品描述</label>
+    <button class="btn btn-secondary" onclick="reparseDesc()" style="margin-bottom:6px;font-size:12px;">🔍 解析文案</button>
     <textarea id="mDesc"></textarea>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">取消</button>
@@ -230,26 +227,165 @@ function cleanText(text) {
   return text.trim();
 }
 
-// ── Bot text parsing helpers ──
-function parsePriceFromBot(text) {
-  if (!text) return '';
-  var m = text.match(/[\$\uff04]\s*(\d+)/);
-  return m ? m[1] : '';
+// ── Text parsing (from 文案整理工具) ──
+function expandParenChars(str) {
+  return str.replace(/\(([^()]{1})\)/g, '$1');
 }
 
-function parseCloseDateFromBot(text) {
+function isLineFormat(text) {
+  return /\(emoji\)/i.test(text) || /\(\$\)\(\d\)/.test(text);
+}
+
+function parseOne(text) {
+  if (isLineFormat(text)) return parseLineFormat(text);
+  return parseStandardFormat(text);
+}
+
+function parseLineFormat(text) {
+  var lines = text.split('\n');
+  var name = '', price = '', date = '';
+  var bodyStartIndex = 0;
+  for (var i = 0; i < lines.length; i++) {
+    var t = lines[i].trim();
+    if (t) { name = t; bodyStartIndex = i + 1; break; }
+  }
+  var headerLines = {};
+  var subs = [];
+  headerLines[0] = true;
+  for (var h = 0; h < bodyStartIndex; h++) headerLines[h] = true;
+
+  for (var i = bodyStartIndex; i < lines.length; i++) {
+    var t = lines[i].trim();
+    if (!t) continue;
+    if (!price && /\(\$\)/.test(t)) {
+      var expanded = expandParenChars(t);
+      var m = expanded.match(/\$(\d+)/);
+      if (m) { price = m[1]; headerLines[i] = true; continue; }
+    }
+    if (!date && /\(\d\)\(\/\)/.test(t)) {
+      var expanded = expandParenChars(t);
+      var m = expanded.match(/(\d{1,2}\/\d{1,2})/);
+      if (m) { date = m[1]; headerLines[i] = true; continue; }
+    }
+    var subMatch = t.match(/^\(?([A-Za-z])\)\s*(.+)/);
+    if (subMatch) {
+      subs.push({ letter: subMatch[1].toUpperCase(), name: '(' + subMatch[1].toUpperCase() + ')' + subMatch[2].trim(), code: '' });
+      headerLines[i] = true;
+      continue;
+    }
+    if (/商品預購品/.test(t)) { headerLines[i] = true; continue; }
+    if (/^(\(emoji\)\s*)+$/.test(t)) { headerLines[i] = true; continue; }
+    if (price && date) break;
+  }
+  var contentStartIndex = lines.length;
+  for (var i = bodyStartIndex; i < lines.length; i++) {
+    if (headerLines[i]) continue;
+    if (!lines[i].trim()) continue;
+    contentStartIndex = i; break;
+  }
+  var desc = lines.slice(contentStartIndex).join('\n')
+    .replace(/\(emoji\)/gi, '')
+    .replace(/\((\d)\)\(\/\)((?:\(\d\))+)/g, function(_, m, rest) {
+      var day = rest.replace(/\((\d)\)/g, '$1');
+      return '\u23f0' + m + '/' + day + '\u7d50\u55ae';
+    })
+    .replace(/\(\$\)((?:\(\d\))+)/g, function(_, digits) {
+      return '\ud83d\udcb0' + digits.replace(/\((\d)\)/g, '$1');
+    })
+    .replace(/\n{3,}/g, '\n\n').trim();
+  return { name: name, price: price, date: date, code: '', desc: desc, subs: subs, temp: '3', seq: 0 };
+}
+
+function parseStandardFormat(text) {
+  var lines = text.split('\n');
+  var name = '', price = '', date = '';
+  var subs = [];
+  var separatorIndex = -1;
+  for (var i = 0; i < lines.length; i++) {
+    if (/^-{3,}\s*$/.test(lines[i].trim())) { separatorIndex = i; break; }
+  }
+  var infoLines = separatorIndex >= 0 ? lines.slice(0, separatorIndex) : lines;
+  for (var i = 0; i < infoLines.length; i++) {
+    var trimmed = infoLines[i].trim();
+    if (!trimmed) continue;
+    var nameMatch = trimmed.match(/^(?:\u54c1\u540d[\uff1a:]|\ud83c\udff7\ufe0f)\s*(.+)/);
+    if (nameMatch) { name = nameMatch[1].trim(); continue; }
+    var priceMatch = trimmed.match(/\ud83d\udcb0\s*(\d+)/);
+    if (priceMatch) { price = priceMatch[1]; continue; }
+    var dateMatch = trimmed.match(/\u23f0\s*(\d{1,2}\/\d{1,2})\s*\u7d50\u55ae/);
+    if (dateMatch) { date = dateMatch[1]; continue; }
+    var subMatch = trimmed.match(/^\(([A-Za-z])\)\s*(.+)/);
+    if (subMatch) { subs.push({ letter: subMatch[1].toUpperCase(), name: '(' + subMatch[1].toUpperCase() + ')' + subMatch[2].trim(), code: '' }); continue; }
+  }
+  var desc = '';
+  if (separatorIndex >= 0 && separatorIndex < lines.length - 1) {
+    desc = lines.slice(separatorIndex + 1).join('\n').trim();
+  }
+  return { name: name, price: price, date: date, code: '', desc: desc, subs: subs, temp: '3', seq: 0 };
+}
+
+// ── Clean calendar name ──
+function cleanCalName(name) {
+  // 去掉 ⬜
+  name = name.replace(/\u2b1c/g, '');
+  // 去掉 💰數字 部分
+  name = name.replace(/\ud83d\udcb0\s*\d+/g, '');
+  // 去掉 ⏰M/D結單 部分
+  name = name.replace(/\u23f0\s*\d{1,2}\/\d{1,2}\s*\u7d50\u55ae/g, '');
+  // 去掉 #...# 部分
+  name = name.replace(/#[^#]*#/g, '');
+  return name.replace(/\s+/g, ' ').trim();
+}
+
+// ── Parse price from name or text ──
+function parsePriceFromText(text) {
   if (!text) return '';
+  // 💰數字
+  var m = text.match(/\ud83d\udcb0\s*(\d+)/);
+  if (m) return m[1];
+  // ($)(數字) format (LINE)
+  if (/\(\$\)/.test(text)) {
+    var expanded = expandParenChars(text);
+    var m2 = expanded.match(/\$(\d+)/);
+    if (m2) return m2[1];
+  }
+  // $數字 or ＄數字
+  var m3 = text.match(/[\$\uff04]\s*(\d+)/);
+  if (m3) return m3[1];
+  return '';
+}
+
+// ── Parse close date from name or text ──
+function parseCloseDateFromText(text) {
+  if (!text) return '';
+  // ⏰M/D結單
+  var m = text.match(/\u23f0\s*(\d{1,2}\/\d{1,2})\s*\u7d50\u55ae/);
+  if (m) return m[1];
+  // (數字)(/)(數字) LINE format
+  if (/\(\d\)\(\/\)/.test(text)) {
+    var expanded = expandParenChars(text);
+    var m2 = expanded.match(/(\d{1,2}\/\d{1,2})/);
+    if (m2) return m2[1];
+  }
+  // 到貨通知 next line
   var lines = text.split('\n');
   for (var i = 0; i < lines.length; i++) {
     if (lines[i].trim() === '\u5230\u8ca8\u901a\u77e5' && i + 1 < lines.length) {
-      var next = lines[i+1].trim();
-      var dm = next.match(/(\d{1,2}\/\d{1,2})/);
+      var dm = lines[i+1].trim().match(/(\d{1,2}\/\d{1,2})/);
       if (dm) return dm[1];
     }
   }
+  // M/D結單
   var cm = text.match(/(\d{1,2}\/\d{1,2})\u7d50\u55ae/);
   if (cm) return cm[1];
   return '';
+}
+
+// ── Auto-detect temp code from name ──
+function detectTempCode(name) {
+  if (/\u51b7\u51cd/.test(name)) return '1';
+  if (/\u51b7\u85cf/.test(name)) return '2';
+  return '3';
 }
 
 // ── findBotItem ──
@@ -521,41 +657,66 @@ function openModal(idx, isNew) {
   var calItem = r.calItem;
   var match = r.match;
   var botItem = findBotItem(calItem.name);
-  var botText = botItem ? cleanText(botItem.text) : '';
+  var rawBotText = botItem ? botItem.text : '';
   // 如果 textarea 有被編輯過，優先用編輯後的
   var ta = document.getElementById('bot-ta-' + idx);
-  if (ta) botText = ta.value;
+  var botText = ta ? ta.value : (rawBotText ? cleanText(rawBotText) : '');
 
   modalCtx = { idx: idx, isNew: isNew, match: match, calItem: calItem };
 
   document.getElementById('modalTitle').textContent = isNew ? '\ud83c\udd95 \u65b0\u54c1\u4e0a\u67b6' : '\u2705 \u6574\u7406\u4e0a\u67b6';
-  document.getElementById('mName').value = calItem.name;
 
-  // price: from match or bot text
+  // 1. 清理商品名稱
+  var cleanedName = cleanCalName(calItem.name);
+  document.getElementById('mName').value = cleanedName;
+
+  // 2. 用 parseOne 解析原始 bot 文案（如果有的話）
+  var parsed = rawBotText ? parseOne(rawBotText) : null;
+
+  // 3. 售價：優先 match > 日曆名稱解析 > 文案解析
   var price = '';
   if (match && match.priceMin) price = match.priceMin;
-  if (!price && botText) price = parsePriceFromBot(botText);
+  if (!price) price = parsePriceFromText(calItem.name);
+  if (!price && parsed) price = parsed.price;
+  if (!price) price = parsePriceFromText(botText);
   document.getElementById('mPrice').value = price;
 
-  // close date
-  var closeDate = parseCloseDateFromBot(botText);
+  // 4. 結單日：優先日曆名稱 > 文案解析
+  var closeDate = parseCloseDateFromText(calItem.name);
+  if (!closeDate && parsed) closeDate = parsed.date;
+  if (!closeDate) closeDate = parseCloseDateFromText(botText);
   document.getElementById('mCloseDate').value = closeDate;
 
-  // temperature: only show for new items
-  document.getElementById('mTempRow').style.display = isNew ? '' : 'none';
-  document.getElementById('mTemp').value = '\u51b7\u51cd';
-
-  // styles
+  // 5. 款式：優先 match > 文案解析
   var tbody = document.getElementById('mStylesBody');
   tbody.innerHTML = '';
   if (match && match.styles && match.styles.length) {
     match.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
+  } else if (parsed && parsed.subs && parsed.subs.length) {
+    parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
   }
 
-  // description
-  document.getElementById('mDesc').value = botText;
+  // 6. 商品描述：用已清理的文案或 parsed.desc
+  var descText = botText;
+  if (!descText && parsed) descText = parsed.desc || '';
+  document.getElementById('mDesc').value = descText;
 
   document.getElementById('modalOverlay').classList.add('show');
+}
+
+function reparseDesc() {
+  var descEl = document.getElementById('mDesc');
+  var text = descEl.value;
+  if (!text) return;
+  var parsed = parseOne(text);
+  if (parsed.price) document.getElementById('mPrice').value = parsed.price;
+  if (parsed.date) document.getElementById('mCloseDate').value = parsed.date;
+  if (parsed.subs && parsed.subs.length) {
+    var tbody = document.getElementById('mStylesBody');
+    tbody.innerHTML = '';
+    parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
+  }
+  if (parsed.desc) descEl.value = parsed.desc;
 }
 
 function closeModal() {
@@ -583,7 +744,6 @@ function confirmModal() {
   var name = document.getElementById('mName').value.trim();
   var price = document.getElementById('mPrice').value.trim();
   var closeDate = document.getElementById('mCloseDate').value.trim();
-  var temp = document.getElementById('mTemp').value;
   var desc = document.getElementById('mDesc').value;
   var isNew = modalCtx.isNew;
   var match = modalCtx.match;
@@ -609,7 +769,7 @@ function confirmModal() {
     customId = match.feedId;
   } else {
     // 新品編號：溫度碼 + YYMMDD + 兩位流水號
-    var tempCode = temp === '\u51b7\u51cd' ? '1' : temp === '\u51b7\u85cf' ? '2' : '3';
+    var tempCode = detectTempCode(name);
     var dateStr = document.getElementById('targetDate').value; // YYYY-MM-DD
     var yy = dateStr.slice(2,4), mm = dateStr.slice(5,7), dd = dateStr.slice(8,10);
     var seq = String(newItemSeq).padStart(2, '0');
@@ -622,7 +782,6 @@ function confirmModal() {
     name: name,
     price: price,
     closeDate: closeDate,
-    temp: temp,
     styles: styles,
     desc: desc,
     isNew: isNew,
