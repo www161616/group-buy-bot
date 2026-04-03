@@ -136,6 +136,10 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
     <input id="mPrice" type="number">
     <label>結單日（M/D）</label>
     <input id="mCloseDate" type="text" placeholder="例：4/10">
+    <div id="mTempRow" style="display:none;">
+      <label>溫度</label>
+      <select id="mTemp"><option value="冷凍">冷凍</option><option value="冷藏">冷藏</option><option value="常溫" selected>常溫</option></select>
+    </div>
     <label>款式明細</label>
     <table class="modal-styles-table" id="mStylesTable">
       <thead><tr><th>款式名稱</th><th>售價</th><th></th></tr></thead>
@@ -227,93 +231,68 @@ function cleanText(text) {
   return text.trim();
 }
 
-// ── Text parsing (from 文案整理工具) ──
+// ── Text parsing ──
 function expandParenChars(str) {
-  return str.replace(/\(([^()]{1})\)/g, '$1');
+  // (emoji) → 空
+  str = str.replace(/\(emoji\)/gi, '');
+  // ($) → $
+  str = str.replace(/\(\$\)/g, '$');
+  // (/) → /
+  str = str.replace(/\(\/\)/g, '/');
+  // (!) → !
+  str = str.replace(/\(!\)/g, '!');
+  // (?) → ?
+  str = str.replace(/\(\?\)/g, '?');
+  // (heart) (wink) → 空
+  str = str.replace(/\(heart\)/gi, '');
+  str = str.replace(/\(wink\)/gi, '');
+  // (連續數字) 如 (8)(5) → 85
+  str = str.replace(/(\(\d+\))+/g, function(m) {
+    return m.replace(/\((\d+)\)/g, '$1');
+  });
+  // (單一字母) → 該字母
+  str = str.replace(/\(([a-zA-Z])\)/g, '$1');
+  return str;
 }
 
-function isLineFormat(text) {
-  return /\(emoji\)/i.test(text) || /\(\$\)\(\d\)/.test(text);
-}
-
-function parseOne(text) {
-  if (isLineFormat(text)) return parseLineFormat(text);
-  return parseStandardFormat(text);
-}
-
-function parseLineFormat(text) {
-  var lines = text.split('\n');
+function parseBotText(botText) {
+  if (!botText) return { name: '', price: '', date: '', desc: '', subs: [] };
+  // Step 1: expandParenChars on entire text
+  var cleanedText = expandParenChars(botText);
+  // Step 2: split lines
+  var lines = cleanedText.split('\n');
   var name = '', price = '', date = '';
-  var bodyStartIndex = 0;
-  for (var i = 0; i < lines.length; i++) {
-    var t = lines[i].trim();
-    if (t) { name = t; bodyStartIndex = i + 1; break; }
-  }
-  var headerLines = {};
   var subs = [];
-  headerLines[0] = true;
-  for (var h = 0; h < bodyStartIndex; h++) headerLines[h] = true;
-
-  for (var i = bodyStartIndex; i < lines.length; i++) {
+  // Step 3: scan lines
+  for (var i = 0; i < lines.length; i++) {
     var t = lines[i].trim();
     if (!t) continue;
-    if (!price && /\(\$\)/.test(t)) {
-      var expanded = expandParenChars(t);
-      var m = expanded.match(/\$(\d+)/);
-      if (m) { price = m[1]; headerLines[i] = true; continue; }
+    // first non-empty line = productName
+    if (!name) { name = t; continue; }
+    // price: $數字 (only first)
+    if (!price) {
+      var pm = t.match(/\$(\d+)/);
+      if (pm) { price = pm[1]; continue; }
     }
-    if (!date && /\(\d\)\(\/\)/.test(t)) {
-      var expanded = expandParenChars(t);
-      var m = expanded.match(/(\d{1,2}\/\d{1,2})/);
-      if (m) { date = m[1]; headerLines[i] = true; continue; }
+    // date: 數字/數字結單 or short line with 數字/數字
+    if (!date) {
+      var dm = t.match(/(\d{1,2}\/\d{1,2})\u7d50\u55ae/);
+      if (dm) { date = dm[1]; continue; }
+      if (t.length < 10) {
+        var dm2 = t.match(/^(\d{1,2}\/\d{1,2})$/);
+        if (dm2) { date = dm2[1]; continue; }
+      }
     }
-    var subMatch = t.match(/^\(?([A-Za-z])\)\s*(.+)/);
+    // subs: (A)xxx (B)xxx etc
+    var subMatch = t.match(/^\(([A-Za-z])\)\s*(.+)/);
     if (subMatch) {
-      subs.push({ letter: subMatch[1].toUpperCase(), name: '(' + subMatch[1].toUpperCase() + ')' + subMatch[2].trim(), code: '' });
-      headerLines[i] = true;
+      subs.push({ letter: subMatch[1].toUpperCase(), name: '(' + subMatch[1].toUpperCase() + ')' + subMatch[2].trim() });
       continue;
     }
-    if (/商品預購品/.test(t)) { headerLines[i] = true; continue; }
-    if (/^(\(emoji\)\s*)+$/.test(t)) { headerLines[i] = true; continue; }
   }
-  var contentStartIndex = lines.length;
-  for (var i = bodyStartIndex; i < lines.length; i++) {
-    if (headerLines[i]) continue;
-    if (!lines[i].trim()) continue;
-    contentStartIndex = i; break;
-  }
-  var desc = lines.slice(contentStartIndex).join('\n')
-    .replace(/\(emoji\)/gi, '')
-    .replace(/\n{3,}/g, '\n\n').trim();
-  return { name: name, price: price, date: date, code: '', desc: desc, subs: subs, temp: '3', seq: 0 };
-}
-
-function parseStandardFormat(text) {
-  var lines = text.split('\n');
-  var name = '', price = '', date = '';
-  var subs = [];
-  var separatorIndex = -1;
-  for (var i = 0; i < lines.length; i++) {
-    if (/^-{3,}\s*$/.test(lines[i].trim())) { separatorIndex = i; break; }
-  }
-  var infoLines = separatorIndex >= 0 ? lines.slice(0, separatorIndex) : lines;
-  for (var i = 0; i < infoLines.length; i++) {
-    var trimmed = infoLines[i].trim();
-    if (!trimmed) continue;
-    var nameMatch = trimmed.match(/^(?:\u54c1\u540d[\uff1a:]|\ud83c\udff7\ufe0f)\s*(.+)/);
-    if (nameMatch) { name = nameMatch[1].trim(); continue; }
-    var priceMatch = trimmed.match(/\ud83d\udcb0\s*(\d+)/);
-    if (priceMatch) { price = priceMatch[1]; continue; }
-    var dateMatch = trimmed.match(/\u23f0\s*(\d{1,2}\/\d{1,2})\s*\u7d50\u55ae/);
-    if (dateMatch) { date = dateMatch[1]; continue; }
-    var subMatch = trimmed.match(/^\(([A-Za-z])\)\s*(.+)/);
-    if (subMatch) { subs.push({ letter: subMatch[1].toUpperCase(), name: '(' + subMatch[1].toUpperCase() + ')' + subMatch[2].trim(), code: '' }); continue; }
-  }
-  var desc = '';
-  if (separatorIndex >= 0 && separatorIndex < lines.length - 1) {
-    desc = lines.slice(separatorIndex + 1).join('\n').trim();
-  }
-  return { name: name, price: price, date: date, code: '', desc: desc, subs: subs, temp: '3', seq: 0 };
+  // Step 4: desc = entire cleanedText
+  var desc = cleanedText.replace(/\n{3,}/g, '\n\n').trim();
+  return { name: name, price: price, date: date, desc: desc, subs: subs };
 }
 
 // ── Clean calendar name ──
@@ -706,32 +685,32 @@ function openModal(idx, isNew) {
   var botItem = findBotItem(calItem.name);
   var rawBotText = botItem ? botItem.text : '';
   var ta = document.getElementById('bot-ta-' + idx);
-  var botText = ta ? ta.value : (rawBotText ? cleanText(rawBotText) : '');
+  var botText = ta ? ta.value : (rawBotText || '');
 
   modalCtx = { idx: idx, isNew: isNew, match: match, calItem: calItem };
   document.getElementById('modalTitle').textContent = isNew ? '\ud83c\udd95 \u65b0\u54c1\u4e0a\u67b6' : '\u2705 \u6574\u7406\u4e0a\u67b6';
 
-  // 用 parseOne 解析文案
-  var parsed = botText ? parseOne(botText) : null;
+  // 解析文案
+  var parsed = parseBotText(botText);
 
   // 售價：parsed > match > 日曆名稱
-  var price = '';
-  if (parsed && parsed.price) price = parsed.price;
+  var price = parsed.price || '';
   if (!price && match && match.priceMin) price = match.priceMin;
   if (!price) price = parsePriceFromText(calItem.name);
 
   // 結單日：parsed > 日曆名稱
-  var closeDate = '';
-  if (parsed && parsed.date) closeDate = parsed.date;
+  var closeDate = parsed.date || '';
   if (!closeDate) closeDate = parseCloseDateFromText(calItem.name);
 
-  // 品名：parsed.name > 日曆名稱清理
-  var productName = (parsed && parsed.name) ? parsed.name : cleanCalName(calItem.name);
+  // 品名：parsed.name > match.title 清理 > 日曆名稱清理
+  var productName = parsed.name || '';
+  if (!productName && match && match.title) productName = cleanCalName(match.title);
+  if (!productName) productName = cleanCalName(calItem.name);
 
   // 編號
   var itemId = '';
   if (!isNew && match && match.feedId) {
-    itemId = match.feedId.replace(/^g\d+_(sc|u)_/, '');
+    itemId = match.feedId.replace(/^g\d+_(sc_|u_|)/, '');
   } else {
     var tempCode = detectTempCode(productName);
     var dateStr = document.getElementById('targetDate').value;
@@ -739,48 +718,83 @@ function openModal(idx, isNew) {
     itemId = tempCode + yy + mm + dd + String(newItemSeq).padStart(2, '0');
     newItemSeq++;
   }
+  // 存到 modalCtx 給溫度 change 用
+  modalCtx.productName = productName;
+  modalCtx.price = price;
+  modalCtx.closeDate = closeDate;
+  modalCtx.itemId = itemId;
 
-  // 組合完整標題格式
+  // 組合完整標題
   var fullTitle = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae#' + itemId + '#';
   document.getElementById('mName').value = fullTitle;
   document.getElementById('mPrice').value = price;
   document.getElementById('mCloseDate').value = closeDate;
 
+  // 溫度：新品才顯示
+  document.getElementById('mTempRow').style.display = isNew ? '' : 'none';
+  document.getElementById('mTemp').value = '\u5e38\u6eab';
+
   // 款式：parsed.subs > match.styles
   var tbody = document.getElementById('mStylesBody');
   tbody.innerHTML = '';
-  if (parsed && parsed.subs && parsed.subs.length) {
+  if (parsed.subs && parsed.subs.length) {
     parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
   } else if (match && match.styles && match.styles.length) {
     match.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
   }
 
-  // 商品描述：parsed.desc > 歷史文案 > 清理後文案
-  var descText = '';
-  if (parsed && parsed.desc) descText = parsed.desc;
-  if (!descText) {
-    var histTa = document.getElementById('hist-ta-' + idx);
-    if (histTa) descText = histTa.value;
-  }
-  if (!descText) descText = botText;
-  document.getElementById('mDesc').value = descText;
+  // 商品描述：parsed.desc 完整內容
+  document.getElementById('mDesc').value = parsed.desc || botText;
 
   document.getElementById('modalOverlay').classList.add('show');
 }
+
+// 溫度改變時即時更新 mName 裡的編號
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('mTemp').addEventListener('change', function() {
+    if (!modalCtx || !modalCtx.isNew) return;
+    var temp = this.value;
+    var tempCode = temp === '\u51b7\u51cd' ? '1' : temp === '\u51b7\u85cf' ? '2' : '3';
+    var dateStr = document.getElementById('targetDate').value;
+    var yy = dateStr.slice(2,4), mm = dateStr.slice(5,7), dd = dateStr.slice(8,10);
+    // 保留原流水號（從現有 itemId 取後兩位）
+    var oldSeq = modalCtx.itemId.slice(-2);
+    var newId = tempCode + yy + mm + dd + oldSeq;
+    modalCtx.itemId = newId;
+    // 重組 mName
+    var fullTitle = '\u2b1c' + modalCtx.productName + '\ud83d\udcb0' + modalCtx.price + '\u23f0' + modalCtx.closeDate + '\u7d50\u55ae#' + newId + '#';
+    document.getElementById('mName').value = fullTitle;
+  });
+});
 
 function reparseDesc() {
   var descEl = document.getElementById('mDesc');
   var text = descEl.value;
   if (!text) return;
-  var parsed = parseOne(text);
-  if (parsed.price) document.getElementById('mPrice').value = parsed.price;
-  if (parsed.date) document.getElementById('mCloseDate').value = parsed.date;
+  var parsed = parseBotText(text);
+  // 更新售價、結單日
+  if (parsed.price) {
+    document.getElementById('mPrice').value = parsed.price;
+    if (modalCtx) modalCtx.price = parsed.price;
+  }
+  if (parsed.date) {
+    document.getElementById('mCloseDate').value = parsed.date;
+    if (modalCtx) modalCtx.closeDate = parsed.date;
+  }
+  // 更新款式
   if (parsed.subs && parsed.subs.length) {
     var tbody = document.getElementById('mStylesBody');
     tbody.innerHTML = '';
     parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
   }
-  if (parsed.desc) descEl.value = parsed.desc;
+  // 更新描述為清理後
+  descEl.value = parsed.desc;
+  // 重組 mName
+  if (modalCtx) {
+    if (parsed.name) modalCtx.productName = parsed.name;
+    var fullTitle = '\u2b1c' + modalCtx.productName + '\ud83d\udcb0' + (modalCtx.price || '') + '\u23f0' + (modalCtx.closeDate || '') + '\u7d50\u55ae#' + modalCtx.itemId + '#';
+    document.getElementById('mName').value = fullTitle;
+  }
 }
 
 function closeModal() {
@@ -930,8 +944,8 @@ function exportXLS() {
     var id = item.customId;
     var hasStyles = item.styles && item.styles.length > 0;
 
-    // 商品名稱格式
-    var titleStr = '\u2b1c' + item.name + '\ud83d\udcb0' + item.price + '\u23f0' + (item.closeDate || '') + '\u7d50\u55ae#' + id + '#';
+    // 商品名稱：mName 已是完整標題格式
+    var titleStr = item.name;
 
     // 主要分類
     var mainCat = '';
