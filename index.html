@@ -202,10 +202,13 @@ window.addEventListener('DOMContentLoaded', function() {
   document.getElementById('targetDate').value = new Date().toISOString().split('T')[0];
   fetchBotItems();
   renderBatch();
-  // 溫度改變時即時重算編號
+  // 溫度改變時即時重算編號（新品）
   document.getElementById('mTemp').addEventListener('change', function() {
     rebuildNewMName();
   });
+  // 售價、結單日改變時更新 mName
+  document.getElementById('mPrice').addEventListener('input', updateMNameFields);
+  document.getElementById('mCloseDate').addEventListener('input', updateMNameFields);
 });
 
 // ── Bot items ──
@@ -433,6 +436,24 @@ function rebuildNewMName() {
     var title = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae#' + id9 + '#';
     document.getElementById('mName').value = title;
   }
+}
+
+// 售價或結單日改變時，更新 mName 裡的對應部分
+function updateMNameFields() {
+  var mName = document.getElementById('mName');
+  var val = mName.value;
+  if (!val) return;
+  var newPrice = document.getElementById('mPrice').value;
+  var newDate = document.getElementById('mCloseDate').value;
+  // 新品走 rebuildNewMName
+  if (modalCtx && modalCtx.isNew) {
+    rebuildNewMName();
+    return;
+  }
+  // 舊商品：直接替換 mName 裡的 💰數字 和 ⏰日期結單
+  val = val.replace(/\ud83d\udcb0\d*/, '\ud83d\udcb0' + newPrice);
+  val = val.replace(/\u23f0\d{1,2}\/\d{1,2}\u7d50\u55ae/, '\u23f0' + newDate + '\u7d50\u55ae');
+  mName.value = val;
 }
 
 // ── findBotItem ──
