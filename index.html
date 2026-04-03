@@ -275,7 +275,6 @@ function parseLineFormat(text) {
     }
     if (/商品預購品/.test(t)) { headerLines[i] = true; continue; }
     if (/^(\(emoji\)\s*)+$/.test(t)) { headerLines[i] = true; continue; }
-    if (price && date) break;
   }
   var contentStartIndex = lines.length;
   for (var i = bodyStartIndex; i < lines.length; i++) {
@@ -285,13 +284,6 @@ function parseLineFormat(text) {
   }
   var desc = lines.slice(contentStartIndex).join('\n')
     .replace(/\(emoji\)/gi, '')
-    .replace(/\((\d)\)\(\/\)((?:\(\d\))+)/g, function(_, m, rest) {
-      var day = rest.replace(/\((\d)\)/g, '$1');
-      return '\u23f0' + m + '/' + day + '\u7d50\u55ae';
-    })
-    .replace(/\(\$\)((?:\(\d\))+)/g, function(_, digits) {
-      return '\ud83d\udcb0' + digits.replace(/\((\d)\)/g, '$1');
-    })
     .replace(/\n{3,}/g, '\n\n').trim();
   return { name: name, price: price, date: date, code: '', desc: desc, subs: subs, temp: '3', seq: 0 };
 }
@@ -713,35 +705,48 @@ function openModal(idx, isNew) {
   var match = r.match;
   var botItem = findBotItem(calItem.name);
   var rawBotText = botItem ? botItem.text : '';
-  // 如果 textarea 有被編輯過，優先用編輯後的
   var ta = document.getElementById('bot-ta-' + idx);
   var botText = ta ? ta.value : (rawBotText ? cleanText(rawBotText) : '');
 
   modalCtx = { idx: idx, isNew: isNew, match: match, calItem: calItem };
-
   document.getElementById('modalTitle').textContent = isNew ? '\ud83c\udd95 \u65b0\u54c1\u4e0a\u67b6' : '\u2705 \u6574\u7406\u4e0a\u67b6';
 
-  // 用 parseOne 解析原始 bot 文案
-  var parsed = rawBotText ? parseOne(rawBotText) : null;
+  // 用 parseOne 解析文案
+  var parsed = botText ? parseOne(botText) : null;
 
-  // 1. 商品名稱：優先文案解析 > 日曆名稱清理
-  var cleanedName = cleanCalName(calItem.name);
-  document.getElementById('mName').value = (parsed && parsed.name) ? parsed.name : cleanedName;
-
-  // 2. 售價：優先文案解析 > match > 日曆名稱解析
+  // 售價：parsed > match > 日曆名稱
   var price = '';
   if (parsed && parsed.price) price = parsed.price;
   if (!price && match && match.priceMin) price = match.priceMin;
   if (!price) price = parsePriceFromText(calItem.name);
-  document.getElementById('mPrice').value = price;
 
-  // 3. 結單日：優先文案解析 > 日曆名稱解析
+  // 結單日：parsed > 日曆名稱
   var closeDate = '';
   if (parsed && parsed.date) closeDate = parsed.date;
   if (!closeDate) closeDate = parseCloseDateFromText(calItem.name);
+
+  // 品名：parsed.name > 日曆名稱清理
+  var productName = (parsed && parsed.name) ? parsed.name : cleanCalName(calItem.name);
+
+  // 編號
+  var itemId = '';
+  if (!isNew && match && match.feedId) {
+    itemId = match.feedId.replace(/^g\d+_(sc|u)_/, '');
+  } else {
+    var tempCode = detectTempCode(productName);
+    var dateStr = document.getElementById('targetDate').value;
+    var yy = dateStr.slice(2,4), mm = dateStr.slice(5,7), dd = dateStr.slice(8,10);
+    itemId = tempCode + yy + mm + dd + String(newItemSeq).padStart(2, '0');
+    newItemSeq++;
+  }
+
+  // 組合完整標題格式
+  var fullTitle = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae#' + itemId + '#';
+  document.getElementById('mName').value = fullTitle;
+  document.getElementById('mPrice').value = price;
   document.getElementById('mCloseDate').value = closeDate;
 
-  // 4. 款式：優先文案解析 > match
+  // 款式：parsed.subs > match.styles
   var tbody = document.getElementById('mStylesBody');
   tbody.innerHTML = '';
   if (parsed && parsed.subs && parsed.subs.length) {
@@ -750,10 +755,13 @@ function openModal(idx, isNew) {
     match.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
   }
 
-  // 5. 商品描述：優先歷史文案 > parsed.desc > 清理後文案
-  var histTa = document.getElementById('hist-ta-' + idx);
-  var descText = histTa ? histTa.value : '';
-  if (!descText && parsed) descText = parsed.desc || '';
+  // 商品描述：parsed.desc > 歷史文案 > 清理後文案
+  var descText = '';
+  if (parsed && parsed.desc) descText = parsed.desc;
+  if (!descText) {
+    var histTa = document.getElementById('hist-ta-' + idx);
+    if (histTa) descText = histTa.value;
+  }
   if (!descText) descText = botText;
   document.getElementById('mDesc').value = descText;
 
@@ -817,22 +825,16 @@ function confirmModal() {
     if (sn) styles.push({ name: sn, price: sp || price });
   });
 
-  // generate id for new items
+  // 從 mName 的 #...# 提取編號
+  var idMatch = name.match(/#([^#]+)#/);
+  var customId = idMatch ? idMatch[1] : '';
   var feedId = '';
-  var customId = '';
   if (!isNew && match && match.feedId) {
     feedId = match.feedId;
-    customId = match.feedId;
   } else {
-    // 新品編號：溫度碼 + YYMMDD + 兩位流水號
-    var tempCode = detectTempCode(name);
-    var dateStr = document.getElementById('targetDate').value; // YYYY-MM-DD
-    var yy = dateStr.slice(2,4), mm = dateStr.slice(5,7), dd = dateStr.slice(8,10);
-    var seq = String(newItemSeq).padStart(2, '0');
-    newItemSeq++;
-    customId = tempCode + yy + mm + dd + seq;
     feedId = customId;
   }
+  if (!customId) customId = feedId;
 
   batchList.push({
     name: name,
