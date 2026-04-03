@@ -413,7 +413,7 @@ async function searchSupabase(keyword) {
   var cjk = keyword.replace(/[^\u4e00-\u9fff]/g, '');
   var query = cjk.slice(0, 3) || keyword.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4);
   if (!query) return null;
-  var url = SUPABASE_URL + '/rest/v1/gb_lele_products?title=ilike.*' + encodeURIComponent(query) + '*&select=id,title,price_min,price_max,img_url,feed_id,styles&limit=10';
+  var url = SUPABASE_URL + '/rest/v1/gb_lele_products?title=ilike.*' + encodeURIComponent(query) + '*&select=id,title,price_min,price_max,img_url,feed_id,styles,description&limit=10';
   var res = await fetch(url, { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } });
   var rows = await res.json();
   if (!rows || !rows.length) return null;
@@ -427,6 +427,7 @@ async function searchSupabase(keyword) {
     id: best.id, title: best.title, priceMin: best.price_min, priceMax: best.price_max,
     imgUrl: best.img_url, feedId: best.feed_id,
     styles: (best.styles || []).map(function(s) { return { name: s.name, price: s.price, cost: s.cost }; }),
+    description: best.description || '',
     score: bestScore
   };
 }
@@ -537,6 +538,17 @@ function renderFiltered() {
         });
       });
     }
+    var hbtn = document.getElementById('hist-copy-' + i);
+    if (hbtn) {
+      hbtn.addEventListener('click', function() {
+        var hta = document.getElementById('hist-ta-' + i);
+        if (!hta) return;
+        navigator.clipboard.writeText(hta.value).then(function() {
+          hbtn.textContent = '\u5df2\u8907\u88fd \u2713'; hbtn.classList.add('copied');
+          setTimeout(function() { hbtn.textContent = '\u8907\u88fd'; hbtn.classList.remove('copied'); }, 2000);
+        });
+      });
+    }
   });
 }
 
@@ -565,6 +577,16 @@ function renderMatchBody(r, idx) {
   else if (match.priceMin) copyLines.push('\u552e\u50f9\uff1a$' + match.priceMin);
   var copyText = copyLines.join('\n');
   var botHtml = renderBotBlock(calItem, idx);
+  var histDescHtml = '';
+  if (match.description) {
+    histDescHtml = '<div class="bot-block" style="background:#f0f0ff;border-color:#c0c0e8;">' +
+      '<div class="bot-block-title" style="color:#6c5ce7;">\ud83d\udccb \u6b77\u53f2\u6587\u6848</div>' +
+      '<div style="display:flex;gap:6px;margin-bottom:8px;">' +
+      '<button class="copy-btn-sm" id="hist-copy-' + idx + '">\u8907\u88fd</button>' +
+      '</div>' +
+      '<textarea id="hist-ta-' + idx + '" style="width:100%;min-height:120px;font-family:var(--sans);font-size:13px;line-height:1.7;border:1px solid #c0c0e8;border-radius:4px;padding:8px;background:white;resize:vertical;">' +
+      esc(match.description) + '</textarea></div>';
+  }
   var addBtn = '<div style="margin-top:12px;"><button class="btn btn-green" onclick="openModal(' + idx + ',false)" style="font-size:13px;">\u2705 \u6574\u7406\u4e0a\u67b6</button></div>';
   return img +
     '<div class="match-lele-title">\ud83d\uddc2 ' + esc(match.title) + '</div>' +
@@ -572,7 +594,7 @@ function renderMatchBody(r, idx) {
     '<div class="match-key">FeedID</div><div class="match-val" style="font-family:var(--mono);font-size:12px;">' + esc(match.feedId || '\u2014') + '</div></div>' +
     stylesHtml +
     '<div class="copy-block"><button class="copy-btn-sm" id="lele-copy-' + idx + '">\u8907\u88fd</button><pre id="lele-pre-' + idx + '">' + esc(copyText) + '</pre></div>' +
-    botHtml + addBtn;
+    histDescHtml + botHtml + addBtn;
 }
 
 function renderNewBody(r, idx) {
@@ -696,8 +718,10 @@ function openModal(idx, isNew) {
     parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
   }
 
-  // 6. 商品描述：用已清理的文案或 parsed.desc
-  var descText = botText;
+  // 6. 商品描述：優先歷史文案 textarea > bot 文案 > parsed.desc
+  var histTa = document.getElementById('hist-ta-' + idx);
+  var descText = histTa ? histTa.value : '';
+  if (!descText) descText = botText;
   if (!descText && parsed) descText = parsed.desc || '';
   document.getElementById('mDesc').value = descText;
 
