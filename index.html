@@ -202,6 +202,10 @@ window.addEventListener('DOMContentLoaded', function() {
   document.getElementById('targetDate').value = new Date().toISOString().split('T')[0];
   fetchBotItems();
   renderBatch();
+  // 溫度改變時即時重算編號
+  document.getElementById('mTemp').addEventListener('change', function() {
+    rebuildNewMName();
+  });
 });
 
 // ── Bot items ──
@@ -369,6 +373,66 @@ function detectTempCode(name) {
   if (/\u51b7\u51cd/.test(name)) return '1';
   if (/\u51b7\u85cf/.test(name)) return '2';
   return '3';
+}
+
+// ── 商品編號產生 ──
+// 9碼：溫度(1) + 年尾(1) + 月日(4) + 序號(2) + 細項碼(1)
+function generateProductId(tempCode, seq, subIdx) {
+  var dateStr = document.getElementById('targetDate').value; // YYYY-MM-DD
+  var yearDigit = dateStr.slice(3, 4); // 2026 → 6
+  var mm = dateStr.slice(5, 7);
+  var dd = dateStr.slice(8, 10);
+  var seqStr = String(seq).padStart(2, '0');
+  var sub = String(subIdx); // 0=無細項, 1=A, 2=B...
+  return tempCode + yearDigit + mm + dd + seqStr + sub;
+}
+
+// 取得8碼前綴（不含細項碼）
+function generateProductId8(tempCode, seq) {
+  var dateStr = document.getElementById('targetDate').value;
+  var yearDigit = dateStr.slice(3, 4);
+  var mm = dateStr.slice(5, 7);
+  var dd = dateStr.slice(8, 10);
+  var seqStr = String(seq).padStart(2, '0');
+  return tempCode + yearDigit + mm + dd + seqStr;
+}
+
+// 重組新品 mName（根據當前 Modal 狀態）
+function rebuildNewMName() {
+  if (!modalCtx || !modalCtx.isNew) return;
+  var tempSelect = document.getElementById('mTemp');
+  var temp = tempSelect.value;
+  var tempCode = temp === '\u51b7\u51cd' ? '1' : temp === '\u51b7\u85cf' ? '2' : '3';
+  var seq = modalCtx.globalSeq || 0;
+  var productName = modalCtx.productName || '';
+  var price = document.getElementById('mPrice').value;
+  var closeDate = document.getElementById('mCloseDate').value;
+
+  // 檢查有沒有款式
+  var styleRows = document.getElementById('mStylesBody').querySelectorAll('tr');
+  var hasSubs = styleRows.length > 0;
+
+  if (hasSubs) {
+    // 有細項：商品名稱用 #8碼（不閉合）
+    var id8 = generateProductId8(tempCode, seq);
+    var title = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae#' + id8;
+    document.getElementById('mName').value = title;
+    // 每個款式自動加 #9碼#
+    styleRows.forEach(function(tr, si) {
+      var nameInput = tr.querySelector('input[type="text"]');
+      if (!nameInput) return;
+      var styleName = nameInput.value;
+      // 去掉舊的 #...# 再加新的
+      styleName = styleName.replace(/#\d*#?/g, '').trim();
+      var subId = generateProductId(tempCode, seq, si + 1);
+      nameInput.value = styleName + '#' + subId + '#';
+    });
+  } else {
+    // 無細項：商品名稱用 #9碼#（閉合）
+    var id9 = generateProductId(tempCode, seq, 0);
+    var title = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae#' + id9 + '#';
+    document.getElementById('mName').value = title;
+  }
 }
 
 // ── findBotItem ──
@@ -727,57 +791,66 @@ function openModal(idx, isNew) {
     if (!descText && rawBotText) descText = parseBotText(rawBotText).desc;
     document.getElementById('mDesc').value = descText;
   } else {
-    // ── 新品：從文案解析，編號留空 ──
+    // ── 新品：從文案解析 + 自動產生編號 ──
     var parsed = parseBotText(rawBotText);
     var price = parsed.price || '';
     var closeDate = parsed.date || parseCloseDateFromText(calItem.name);
     var productName = parsed.name || cleanCalName(calItem.name);
 
-    // 商品名稱：編號留空讓使用者填
-    var title = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae##';
-    document.getElementById('mName').value = title;
+    // 全局序號（今天第幾樣商品）
+    var globalSeq = matchResults.indexOf(r) + 1;
+    modalCtx.globalSeq = globalSeq;
+    modalCtx.productName = productName;
+
     document.getElementById('mPrice').value = price;
     document.getElementById('mCloseDate').value = closeDate;
+
     // 款式：從文案解析
     if (parsed.subs && parsed.subs.length) {
       parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
     }
     // 描述
     document.getElementById('mDesc').value = parsed.desc || '';
+
+    // 溫度：自動偵測，新品才顯示
+    var autoTemp = detectTempCode(productName);
+    var tempVal = autoTemp === '1' ? '\u51b7\u51cd' : autoTemp === '2' ? '\u51b7\u85cf' : '\u5e38\u6eab';
+    document.getElementById('mTempRow').style.display = '';
+    document.getElementById('mTemp').value = tempVal;
+
+    // 自動產生編號並組合 mName
+    rebuildNewMName();
   }
 
-  // 溫度：新品才顯示
-  document.getElementById('mTempRow').style.display = isNew ? '' : 'none';
-  document.getElementById('mTemp').value = '\u5e38\u6eab';
+  // 溫度：舊商品隱藏
+  if (!isNew) {
+    document.getElementById('mTempRow').style.display = 'none';
+  }
 
   document.getElementById('modalOverlay').classList.add('show');
 }
 
 function reparseDesc() {
-  // 取 textarea 的當前內容重新解析
-  // 使用者可能貼上新的原始文案（含 (A)(B)($) 等），所以直接 parse
   var descEl = document.getElementById('mDesc');
   var text = descEl.value;
   if (!text) return;
   var parsed = parseBotText(text);
-  // 更新售價、結單日
   if (parsed.price) document.getElementById('mPrice').value = parsed.price;
   if (parsed.date) document.getElementById('mCloseDate').value = parsed.date;
-  // 更新款式
   if (parsed.subs && parsed.subs.length) {
     var tbody = document.getElementById('mStylesBody');
     tbody.innerHTML = '';
     parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
   }
-  // 更新描述為清理後的版本
   if (parsed.desc) descEl.value = parsed.desc;
-  // 重組 mName（只對新品有意義，舊商品名稱不動）
+  // 新品：更新品名 + 自動偵測溫度 + 重算編號
   if (modalCtx && modalCtx.isNew) {
-    var productName = parsed.name || '';
-    var price = document.getElementById('mPrice').value;
-    var closeDate = document.getElementById('mCloseDate').value;
-    var title = '\u2b1c' + productName + '\ud83d\udcb0' + price + '\u23f0' + closeDate + '\u7d50\u55ae##';
-    document.getElementById('mName').value = title;
+    if (parsed.name) modalCtx.productName = parsed.name;
+    // 自動偵測溫度
+    var autoTemp = detectTempCode(parsed.name || '');
+    var tempVal = autoTemp === '1' ? '\u51b7\u51cd' : autoTemp === '2' ? '\u51b7\u85cf' : '\u5e38\u6eab';
+    document.getElementById('mTemp').value = tempVal;
+    rebuildNewMName();
   }
 }
 
