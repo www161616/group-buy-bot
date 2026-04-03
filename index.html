@@ -311,19 +311,26 @@ function renderList() {
       </div>
       <div class="item-body">
         <div class="text-content">${escHtml(item.text)}</div>
-        <button class="copy-btn" onclick="copyText(this, ${JSON.stringify(item.text).replace(/</g,'\\u003c')})">
+        <button class="copy-btn" onclick="copyCard(this)">
           📋 複製文案
         </button>
       </div>
     </div>
   `).join('');
+
+  // 用 dataset 存文案，避免特殊字元在 onclick 裡出錯
+  items.forEach((item, i) => {
+    const btn = document.querySelector(`#card-${i} .copy-btn`);
+    if (btn) btn.dataset.text = item.text;
+  });
 }
 
 function toggleCard(i) {
   document.getElementById(`card-${i}`).classList.toggle('open');
 }
 
-function copyText(btn, text) {
+function copyCard(btn) {
+  const text = btn.dataset.text || '';
   navigator.clipboard.writeText(text).then(() => {
     btn.textContent = '✅ 已複製！';
     btn.classList.add('copied');
