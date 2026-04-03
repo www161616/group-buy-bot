@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>開團助手 — 包子媽生鮮小舖</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
 :root{--bg:#f5f3ee;--surface:#fff;--border:#ddd9d0;--text:#2a2520;--text-muted:#7a7060;--accent:#c0392b;--accent-light:#fdf0ef;--green:#27ae60;--green-light:#edf7f1;--yellow:#e67e22;--yellow-light:#fef6ec;--blue:#2980b9;--tag-bg:#eceae4;--mono:'JetBrains Mono',monospace;--sans:'Noto Sans TC',sans-serif}
@@ -13,25 +14,17 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
 .logo{font-size:15px;font-weight:700}.logo span{color:#f0a500}
 .header-status{font-size:12px;color:#aaa;font-family:var(--mono)}
 .container{max-width:1100px;margin:0 auto;padding:24px 20px}
-.setup-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
-@media(max-width:700px){.setup-grid{grid-template-columns:1fr}}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px}
-.card-title{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--border);flex-shrink:0}
-.dot.green{background:var(--green)}.dot.red{background:var(--accent)}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s}
 .btn-green{background:var(--green);color:white}.btn-green:hover{background:#219a52}
+.btn-yellow{background:var(--yellow);color:white}.btn-yellow:hover{background:#cf6d17}
 .btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border)}.btn-secondary:hover{background:var(--tag-bg)}
+.btn-accent{background:var(--accent);color:white}.btn-accent:hover{background:#a93226}
+.btn-blue{background:var(--blue);color:white}.btn-blue:hover{background:#2175a8}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .emoji-bar{display:none;flex-wrap:wrap;gap:2px;margin-bottom:6px}
 .emoji-bar.show{display:flex}
 .emoji-btn{background:none;border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-size:16px;cursor:pointer;line-height:1.2}
 .emoji-btn:hover{background:var(--tag-bg)}
-.upload-zone{border:2px dashed var(--border);border-radius:6px;padding:24px;text-align:center;cursor:pointer;transition:all .2s;position:relative}
-.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:var(--accent-light)}
-.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.upload-icon{font-size:28px;margin-bottom:6px}
-.upload-label{font-size:13px;color:var(--text-muted)}.upload-label strong{color:var(--accent)}
 .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500}
 .badge-green{background:var(--green-light);color:var(--green)}.badge-yellow{background:var(--yellow-light);color:var(--yellow)}
 .stats-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
@@ -61,22 +54,40 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
 .copy-btn-sm:hover{background:var(--border)}.copy-btn-sm.copied{color:var(--green);border-color:var(--green)}
 .bot-block{background:#f0f7ff;border:1px solid #c8e0f8;border-radius:6px;padding:12px;margin-top:12px}
 .bot-block-title{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--blue);margin-bottom:8px}
-.bot-block pre{font-family:var(--sans);font-size:13px;white-space:pre-wrap;line-height:1.7;margin-top:6px}
 .new-marker{background:var(--yellow-light);border:1px solid #f0c080;border-radius:6px;padding:10px 14px;font-size:13px;color:var(--yellow);font-weight:500}
 .product-img{max-width:120px;max-height:120px;border-radius:6px;border:1px solid var(--border);object-fit:cover;float:right;margin:0 0 8px 12px}
 .match-lele-title{font-size:12px;color:var(--text-muted);background:var(--tag-bg);padding:4px 10px;border-radius:4px;margin-bottom:8px;font-family:var(--mono);word-break:break-all}
 .section-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;margin-top:12px}
-.auth-info{font-size:13px;color:var(--text-muted);line-height:1.7;margin-bottom:14px}
-.auth-info code{background:var(--tag-bg);padding:1px 6px;border-radius:3px;font-family:var(--mono);font-size:12px;color:var(--text)}
-.input-row{display:flex;gap:8px;margin-bottom:8px}
-.input-field{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:var(--sans);font-size:13px;background:var(--surface);color:var(--text)}
-.input-field:focus{outline:none;border-color:var(--accent)}
 .date-input{padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:13px;background:var(--surface);color:var(--text);width:150px}
-#log{font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:10px;min-height:18px}
 .empty-state{text-align:center;padding:60px 20px;color:var(--text-muted)}
 .empty-state .icon{font-size:40px;margin-bottom:12px}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;justify-content:center;align-items:flex-start;padding:40px 16px;overflow-y:auto}
+.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border-radius:10px;width:100%;max-width:600px;padding:24px;box-shadow:0 8px 30px rgba(0,0,0,.2)}
+.modal h3{font-size:16px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.modal label{display:block;font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:4px;margin-top:12px}
+.modal input,.modal select,.modal textarea{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:var(--sans);font-size:13px;background:var(--surface);color:var(--text)}
+.modal input:focus,.modal select:focus,.modal textarea:focus{outline:none;border-color:var(--blue)}
+.modal textarea{min-height:120px;resize:vertical;line-height:1.7}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+.modal-styles-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+.modal-styles-table th{text-align:left;padding:6px 8px;background:var(--tag-bg);font-size:11px;font-weight:700;color:var(--text-muted)}
+.modal-styles-table td{padding:4px 8px}
+.modal-styles-table input{padding:6px 8px}
+.modal-styles-table .del-style-btn{background:none;border:none;color:var(--accent);cursor:pointer;font-size:16px;padding:2px 6px}
+/* Batch list */
+.batch-section{margin-top:32px;border-top:2px solid var(--border);padding-top:24px}
+.batch-title{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.batch-table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:13px}
+.batch-table th{text-align:left;padding:10px 12px;background:var(--tag-bg);font-size:11px;font-weight:700;color:var(--text-muted);border-bottom:1px solid var(--border)}
+.batch-table td{padding:8px 12px;border-bottom:1px solid var(--border)}
+.batch-table tr:last-child td{border-bottom:none}
+.batch-actions{display:flex;gap:8px;margin-top:16px}
+.batch-empty{text-align:center;padding:30px;color:var(--text-muted);font-size:13px}
+.new-tag{display:inline-block;background:var(--yellow-light);color:var(--yellow);font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px}
 </style>
 </head>
 <body>
@@ -89,7 +100,7 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
     <input class="date-input" id="targetDate" type="date" style="font-size:15px;padding:10px 14px;">
     <button class="btn btn-green" onclick="fetchCalendar()" id="fetchBtn" style="font-size:14px;padding:10px 20px;">📅 讀取今日商品</button>
     <button class="btn btn-secondary" onclick="refreshBotItems()" id="refreshBotBtn" style="font-size:14px;padding:10px 20px;">🔄 重新整理文案</button>
-    <span id="log" style="font-size:12px;color:var(--text-muted);font-family:var(--mono);"></span>
+    <div id="log" style="flex:1;font-family:monospace;font-size:12px;color:#7a7060;"></div>
   </div>
   <div id="resultsArea" style="display:none;">
     <div class="stats-row" id="statsRow"></div>
@@ -103,7 +114,47 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
   <div id="emptyState" class="empty-state" style="display:none;">
     <div class="icon">📋</div><p>今日日曆沒有商品事件</p>
   </div>
+
+  <!-- Batch upload section -->
+  <div class="batch-section" id="batchSection">
+    <div class="batch-title">📦 批次上架清單（<span id="batchCount">0</span> 筆）</div>
+    <div id="batchBody"></div>
+    <div class="batch-actions" id="batchActions" style="display:none;">
+      <button class="btn btn-blue" onclick="exportXLS()">📥 匯出 XLS</button>
+      <button class="btn btn-accent" onclick="clearBatch()">🗑️ 清除全部</button>
+    </div>
+  </div>
 </div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">整理上架</h3>
+    <label>商品名稱</label>
+    <input id="mName" type="text">
+    <label>售價</label>
+    <input id="mPrice" type="number">
+    <label>結單日（M/D）</label>
+    <input id="mCloseDate" type="text" placeholder="例：4/10">
+    <div id="mTempRow">
+      <label>溫度</label>
+      <select id="mTemp"><option value="冷凍">冷凍</option><option value="冷藏">冷藏</option><option value="常溫">常溫</option></select>
+    </div>
+    <label>款式明細</label>
+    <table class="modal-styles-table" id="mStylesTable">
+      <thead><tr><th>款式名稱</th><th>售價</th><th></th></tr></thead>
+      <tbody id="mStylesBody"></tbody>
+    </table>
+    <button class="btn btn-secondary" onclick="addModalStyleRow('','')" style="margin-top:6px;font-size:12px;">+ 新增款式</button>
+    <label>商品描述</label>
+    <textarea id="mDesc"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-green" onclick="confirmModal()">加入清單</button>
+    </div>
+  </div>
+</div>
+
 <script>
 var SUPABASE_URL = 'https://asugjynpocwygggttxyo.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_cG0dslg6JnSwOtPSBko2Eg_VB0NtbTW';
@@ -113,38 +164,52 @@ var calendarItems = [];
 var matchResults = [];
 var currentFilter = 'all';
 var botItems = [];
-var botTextMap = {};  // idx -> text
+var botTextMap = {};
+var batchList = [];
+var newItemSeq = 1; // 新品流水號
+var modalCtx = null; // 目前 modal 對應的資料
+
+var EMOJI_LIST = ['\u2764\ufe0f','\ud83d\udea9','\u2728','\ud83c\udf89','\ud83d\udc4d','\ud83d\udd14','\ud83d\ude18','\ud83e\udd70','\ud83c\udf80','\ud83d\udc49','\ud83e\udee0','\ud83c\udf88','\ud83c\udf81','\ud83d\uded2','\ud83d\udc8e','\ud83d\udc8b','\ud83d\udcde','\ud83d\udccd','\ud83d\udccc','\u23f0','\ud83c\udf08','\u26a1','\ud83d\udd25','\ud83d\udca5','\ud83d\udeab','\u2753','\u2757','\u203c\ufe0f','\u2049\ufe0f','\ud83d\udcaf'];
 
 window.addEventListener('DOMContentLoaded', function() {
   document.getElementById('targetDate').value = new Date().toISOString().split('T')[0];
-
   fetchBotItems();
+  renderBatch();
 });
 
-
-
-function refreshBotItems() {
-  var btn = document.getElementById('refreshBotBtn');
-  btn.disabled = true;
-  btn.textContent = '更新中…';
+// ── Bot items ──
+function fetchBotItems() {
   fetch('https://group-buy-bot.onrender.com/today', { cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.ok) {
         botItems = data.data || [];
-        document.getElementById('headerStatus').textContent = '文案庫 ' + botItems.length + ' 筆';
-        // 如果已有比對結果，重新渲染
+        document.getElementById('headerStatus').textContent = '\u6587\u6848\u5eab ' + botItems.length + ' \u7b46';
+      }
+    }).catch(function(e) { console.log('Bot API:', e.message); });
+}
+
+function refreshBotItems() {
+  var btn = document.getElementById('refreshBotBtn');
+  btn.disabled = true;
+  btn.textContent = '\u66f4\u65b0\u4e2d\u2026';
+  fetch('https://group-buy-bot.onrender.com/today', { cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        botItems = data.data || [];
+        document.getElementById('headerStatus').textContent = '\u6587\u6848\u5eab ' + botItems.length + ' \u7b46';
         if (matchResults.length) renderFiltered();
       }
     }).catch(function(e) { console.log('Bot API:', e.message); })
     .finally(function() {
       btn.disabled = false;
-      btn.textContent = '🔄 重新整理文案';
+      btn.textContent = '\ud83d\udd04 \u91cd\u65b0\u6574\u7406\u6587\u6848';
     });
 }
 
+// ── Text cleaning ──
 function cleanText(text) {
-  // 符號對應
   text = text.replace(/\(emoji\)/gi, '');
   text = text.replace(/\(\$\)/g, '$');
   text = text.replace(/\(\/\)/g, '/');
@@ -152,36 +217,42 @@ function cleanText(text) {
   text = text.replace(/\(\?\)/g, '?');
   text = text.replace(/\(heart\)/gi, '');
   text = text.replace(/\(wink\)/gi, '');
-  // (數字) → 數字，可多個連續 ex: (1)(8)(9) → 189
-  text = text.replace(/(\(\d+\))+/g, function(m) {
-    return m.replace(/\((\d+)\)/g, '$1');
-  });
-  // (單一字母) → 該字母，大小寫都保留
+  text = text.replace(/(\(\d+\))+/g, function(m) { return m.replace(/\((\d+)\)/g, '$1'); });
   text = text.replace(/\(([a-zA-Z])\)/g, '$1');
-  // 「到貨通知」下一行加「結單」
-  var lines = text.split(String.fromCharCode(10));
-  for (var _i = 0; _i < lines.length - 1; _i++) {
-    if (lines[_i].trim() === '到貨通知' && lines[_i+1].trim() && lines[_i+1].indexOf('結單') === -1) {
-      lines[_i+1] = lines[_i+1].trim() + '結單';
+  var lines = text.split('\n');
+  for (var i = 0; i < lines.length - 1; i++) {
+    if (lines[i].trim() === '\u5230\u8ca8\u901a\u77e5' && lines[i+1].trim() && lines[i+1].indexOf('\u7d50\u55ae') === -1) {
+      lines[i+1] = lines[i+1].trim() + '\u7d50\u55ae';
     }
   }
-  text = lines.join(String.fromCharCode(10));
-  // 清理多餘空行（超過2個換行壓成2個）
-  text = text.replace(/[\n]{3,}/g, String.fromCharCode(10) + String.fromCharCode(10));
+  text = lines.join('\n');
+  text = text.replace(/\n{3,}/g, '\n\n');
   return text.trim();
 }
 
-function fetchBotItems() {
-  fetch('https://group-buy-bot.onrender.com/today', { cache: 'no-store' })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.ok) {
-        botItems = data.data || [];
-        document.getElementById('headerStatus').textContent = '文案庫 ' + botItems.length + ' 筆';
-      }
-    }).catch(function(e) { console.log('Bot API:', e.message); });
+// ── Bot text parsing helpers ──
+function parsePriceFromBot(text) {
+  if (!text) return '';
+  var m = text.match(/[\$\uff04]\s*(\d+)/);
+  return m ? m[1] : '';
 }
 
+function parseCloseDateFromBot(text) {
+  if (!text) return '';
+  var lines = text.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === '\u5230\u8ca8\u901a\u77e5' && i + 1 < lines.length) {
+      var next = lines[i+1].trim();
+      var dm = next.match(/(\d{1,2}\/\d{1,2})/);
+      if (dm) return dm[1];
+    }
+  }
+  var cm = text.match(/(\d{1,2}\/\d{1,2})\u7d50\u55ae/);
+  if (cm) return cm[1];
+  return '';
+}
+
+// ── findBotItem ──
 function findBotItem(calName) {
   if (!botItems.length) return null;
   var clean = calName.replace(/[^\u4e00-\u9fffa-zA-Z0-9]/g, '').toLowerCase();
@@ -201,55 +272,41 @@ function findBotItem(calName) {
   return bestScore >= 0.7 ? best : null;
 }
 
+// ── Supabase search ──
 async function searchSupabase(keyword) {
-  // 取前3個中文字做查詢，範圍寬一點
-  var cjk = keyword.replace(/[^一-鿿]/g, '');
+  var cjk = keyword.replace(/[^\u4e00-\u9fff]/g, '');
   var query = cjk.slice(0, 3) || keyword.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4);
   if (!query) return null;
   var url = SUPABASE_URL + '/rest/v1/gb_lele_products?title=ilike.*' + encodeURIComponent(query) + '*&select=id,title,price_min,price_max,img_url,feed_id,styles&limit=10';
-  var res = await fetch(url, {
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': 'Bearer ' + SUPABASE_KEY
-    }
-  });
+  var res = await fetch(url, { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } });
   var rows = await res.json();
   if (!rows || !rows.length) return null;
-  // 找最相似的
   var best = null, bestScore = 0;
   for (var i = 0; i < rows.length; i++) {
     var s = similarity(keyword, rows[i].title);
     if (s > bestScore) { bestScore = s; best = rows[i]; }
   }
   if (bestScore < 0.35) return null;
-  // 轉換格式
   return {
-    id: best.id,
-    title: best.title,
-    priceMin: best.price_min,
-    priceMax: best.price_max,
-    imgUrl: best.img_url,
-    feedId: best.feed_id,
+    id: best.id, title: best.title, priceMin: best.price_min, priceMax: best.price_max,
+    imgUrl: best.img_url, feedId: best.feed_id,
     styles: (best.styles || []).map(function(s) { return { name: s.name, price: s.price, cost: s.cost }; }),
     score: bestScore
   };
 }
 
+// ── Calendar ──
 function fetchCalendar() {
-  var apiKey = GCAL_API_KEY;
-  var calId = GCAL_CAL_ID;
   var dateStr = document.getElementById('targetDate').value;
-  if (!apiKey) { setLog('⚠ API Key 未設定，請聯絡管理員'); return; }
-  if (!dateStr) { setLog('⚠ 請選擇日期'); return; }
+  if (!dateStr) { setLog('\u26a0 \u8acb\u9078\u64c7\u65e5\u671f'); return; }
   var btn = document.getElementById('fetchBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> 讀取中…';
-  setLog('連線中…');
-
+  btn.innerHTML = '<span class="spinner"></span> \u8b80\u53d6\u4e2d\u2026';
+  setLog('\u9023\u7dda\u4e2d\u2026');
   var dayStart = new Date(dateStr + 'T00:00:00+08:00').toISOString();
   var dayEnd = new Date(dateStr + 'T23:59:59+08:00').toISOString();
-  var url = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events'
-    + '?key=' + apiKey + '&timeMin=' + encodeURIComponent(dayStart) + '&timeMax=' + encodeURIComponent(dayEnd)
+  var url = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(GCAL_CAL_ID) + '/events'
+    + '?key=' + GCAL_API_KEY + '&timeMin=' + encodeURIComponent(dayStart) + '&timeMax=' + encodeURIComponent(dayEnd)
     + '&singleEvents=true&orderBy=startTime&maxResults=100';
   fetch(url).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
     .then(function(r) {
@@ -260,19 +317,16 @@ function fetchCalendar() {
         if (start) { try { t = new Date(start).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Taipei' }); } catch(e) {} }
         return { name: ev.summary || '', time: t };
       }).filter(function(ev) { return ev.name; });
-
-      setLog('✓ 讀取到 ' + calendarItems.length + ' 個事件');
+      setLog('\u2713 \u8b80\u53d6\u5230 ' + calendarItems.length + ' \u500b\u4e8b\u4ef6');
       if (!calendarItems.length) showEmpty(); else runMatch();
     })
-    .catch(function(err) {
-  
-      setLog('✗ ' + err.message);
-    })
-    .finally(function() { btn.disabled = false; btn.innerHTML = '📅 讀取今日商品'; });
+    .catch(function(err) { setLog('\u2717 ' + err.message); })
+    .finally(function() { btn.disabled = false; btn.innerHTML = '\ud83d\udcc5 \u8b80\u53d6\u4eca\u65e5\u5546\u54c1'; });
 }
 
+// ── Matching ──
 function tokenize(str) {
-  return str.replace(/#[^#]*#/g, '').replace(/\$[\d,]+/g, '').replace(/\d+\/\d+結單/g, '')
+  return str.replace(/#[^#]*#/g, '').replace(/\$[\d,]+/g, '').replace(/\d+\/\d+\u7d50\u55ae/g, '')
     .replace(/[^\u4e00-\u9fff\u3400-\u4dbfa-zA-Z0-9]/g, '').trim();
 }
 function similarity(a, b) {
@@ -292,52 +346,49 @@ function similarity(a, b) {
   var common = 0; setA.forEach(function(c) { if (setB.has(c)) common++; });
   return Math.max(maxLen / shorter.length * 0.8, (2 * common) / (setA.size + setB.size) * 0.5);
 }
-// findBestMatch replaced by searchSupabase
+
 async function runMatch() {
-  setLog('比對商品庫中… 0 / ' + calendarItems.length);
+  setLog('\u6bd4\u5c0d\u5546\u54c1\u5eab\u4e2d\u2026 0 / ' + calendarItems.length);
   matchResults = [];
   for (var i = 0; i < calendarItems.length; i++) {
     var item = calendarItems[i];
     var result = await searchSupabase(item.name);
-    matchResults.push({
-      calItem: item,
-      match: result || null,
-      score: result ? result.score : 0,
-      isNew: !result
-    });
-    setLog('比對商品庫中… ' + (i+1) + ' / ' + calendarItems.length);
+    matchResults.push({ calItem: item, match: result || null, score: result ? result.score : 0, isNew: !result });
+    setLog('\u6bd4\u5c0d\u5546\u54c1\u5eab\u4e2d\u2026 ' + (i+1) + ' / ' + calendarItems.length);
   }
-  setLog('✓ 比對完成');
+  setLog('\u2713 \u6bd4\u5c0d\u5b8c\u6210');
   renderResults();
 }
 
+// ── Render results ──
 function renderResults() {
   document.getElementById('resultsArea').style.display = '';
   document.getElementById('emptyState').style.display = 'none';
   var matched = matchResults.filter(function(r) { return !r.isNew; }).length;
   var newItems = matchResults.filter(function(r) { return r.isNew; }).length;
   document.getElementById('statsRow').innerHTML =
-    '<div class="stat-box"><div class="stat-num">' + matchResults.length + '</div><div class="stat-label">今日商品</div></div>' +
-    '<div class="stat-box"><div class="stat-num green">' + matched + '</div><div class="stat-label">✅ 已比對</div></div>' +
-    '<div class="stat-box"><div class="stat-num yellow">' + newItems + '</div><div class="stat-label">🆕 新品</div></div>' +
-    '<div class="stat-box"><div class="stat-num">' + botItems.length + '</div><div class="stat-label">📱 Bot 文案</div></div>';
+    '<div class="stat-box"><div class="stat-num">' + matchResults.length + '</div><div class="stat-label">\u4eca\u65e5\u5546\u54c1</div></div>' +
+    '<div class="stat-box"><div class="stat-num green">' + matched + '</div><div class="stat-label">\u2705 \u5df2\u6bd4\u5c0d</div></div>' +
+    '<div class="stat-box"><div class="stat-num yellow">' + newItems + '</div><div class="stat-label">\ud83c\udd95 \u65b0\u54c1</div></div>' +
+    '<div class="stat-box"><div class="stat-num">' + botItems.length + '</div><div class="stat-label">\ud83d\udcf1 Bot \u6587\u6848</div></div>';
   renderFiltered();
 }
+
 function filterResults(type, el) {
   currentFilter = type;
   document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
   el.classList.add('active');
   renderFiltered();
 }
+
 function renderFiltered() {
   var list = document.getElementById('resultsList');
   var items = matchResults;
   if (currentFilter === 'matched') items = matchResults.filter(function(r) { return !r.isNew; });
   if (currentFilter === 'new') items = matchResults.filter(function(r) { return r.isNew; });
-  if (!items.length) { list.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><p>此分類沒有項目</p></div>'; return; }
+  if (!items.length) { list.innerHTML = '<div class="empty-state"><div class="icon">\ud83d\udd0d</div><p>\u6b64\u5206\u985e\u6c92\u6709\u9805\u76ee</p></div>'; return; }
   botTextMap = {};
   list.innerHTML = items.map(function(r, i) { return renderItem(r, i); }).join('');
-  // bind bot copy buttons
   items.forEach(function(r, i) {
     var btn = document.getElementById('bot-copy-' + i);
     if (btn) {
@@ -345,8 +396,8 @@ function renderFiltered() {
         var ta = document.getElementById('bot-ta-' + i);
         var text = ta ? ta.value : (botTextMap[i] || '');
         navigator.clipboard.writeText(text).then(function() {
-          btn.textContent = '已複製 ✓'; btn.classList.add('copied');
-          setTimeout(function() { btn.textContent = '複製文案'; btn.classList.remove('copied'); }, 2000);
+          btn.textContent = '\u5df2\u8907\u88fd \u2713'; btn.classList.add('copied');
+          setTimeout(function() { btn.textContent = '\u8907\u88fd\u6587\u6848'; btn.classList.remove('copied'); }, 2000);
         });
       });
     }
@@ -355,42 +406,44 @@ function renderFiltered() {
 
 function renderItem(r, idx) {
   var badge = r.isNew
-    ? '<span class="badge badge-yellow">🆕 新品</span>'
-    : '<span class="badge badge-green">✅ 已比對 ' + Math.round(r.score * 100) + '%</span>';
-  var body = r.isNew ? renderNewBody(r.calItem, idx) : renderMatchBody(r.calItem, r.match, idx);
+    ? '<span class="badge badge-yellow">\ud83c\udd95 \u65b0\u54c1</span>'
+    : '<span class="badge badge-green">\u2705 \u5df2\u6bd4\u5c0d ' + Math.round(r.score * 100) + '%</span>';
+  var body = r.isNew ? renderNewBody(r, idx) : renderMatchBody(r, idx);
   return '<div class="result-item" id="item-' + idx + '">' +
     '<div class="result-header" onclick="toggleItem(' + idx + ')">' +
-    '<div class="result-time">' + (r.calItem.time || '全天') + '</div>' +
+    '<div class="result-time">' + (r.calItem.time || '\u5168\u5929') + '</div>' +
     '<div class="result-name">' + esc(r.calItem.name) + '</div>' +
-    badge + '<div class="result-toggle">▼</div></div>' +
+    badge + '<div class="result-toggle">\u25bc</div></div>' +
     '<div class="result-body">' + body + '</div></div>';
 }
 
-function renderMatchBody(calItem, match, idx) {
+function renderMatchBody(r, idx) {
+  var calItem = r.calItem, match = r.match;
   var img = match.imgUrl ? '<img class="product-img" src="' + esc(match.imgUrl) + '" onerror="this.style.display=\'none\'">' : '';
   var stylesRows = match.styles.map(function(s) {
-    return '<tr><td>' + esc(s.name) + '</td><td>' + (s.price ? '$' + s.price : '—') + '</td><td>' + (s.cost ? '$' + s.cost : '—') + '</td></tr>';
+    return '<tr><td>' + esc(s.name) + '</td><td>' + (s.price ? '$' + s.price : '\u2014') + '</td><td>' + (s.cost ? '$' + s.cost : '\u2014') + '</td></tr>';
   }).join('');
-  var stylesHtml = match.styles.length ? '<div class="section-label">款式明細</div><table class="styles-table"><tr><th>款式</th><th>售價</th><th>成本</th></tr>' + stylesRows + '</table>' : '';
-  var copyLines = ['【' + calItem.name + '】'];
-  if (match.styles.length) match.styles.forEach(function(s) { copyLines.push(s.name + '　$' + s.price); });
-  else if (match.priceMin) copyLines.push('售價：$' + match.priceMin);
+  var stylesHtml = match.styles.length ? '<div class="section-label">\u6b3e\u5f0f\u660e\u7d30</div><table class="styles-table"><tr><th>\u6b3e\u5f0f</th><th>\u552e\u50f9</th><th>\u6210\u672c</th></tr>' + stylesRows + '</table>' : '';
+  var copyLines = ['\u3010' + calItem.name + '\u3011'];
+  if (match.styles.length) match.styles.forEach(function(s) { copyLines.push(s.name + '\u3000$' + s.price); });
+  else if (match.priceMin) copyLines.push('\u552e\u50f9\uff1a$' + match.priceMin);
   var copyText = copyLines.join('\n');
   var botHtml = renderBotBlock(calItem, idx);
+  var addBtn = '<div style="margin-top:12px;"><button class="btn btn-green" onclick="openModal(' + idx + ',false)" style="font-size:13px;">\u2705 \u6574\u7406\u4e0a\u67b6</button></div>';
   return img +
-    '<div class="match-lele-title">🗂 ' + esc(match.title) + '</div>' +
-    '<div class="match-grid"><div class="match-key">售價</div><div class="match-val">' + (match.priceMin ? '$' + match.priceMin + (match.priceMax ? ' ~ $' + match.priceMax : '') : '—') + '</div>' +
-    '<div class="match-key">FeedID</div><div class="match-val" style="font-family:var(--mono);font-size:12px;">' + esc(match.feedId || '—') + '</div></div>' +
+    '<div class="match-lele-title">\ud83d\uddc2 ' + esc(match.title) + '</div>' +
+    '<div class="match-grid"><div class="match-key">\u552e\u50f9</div><div class="match-val">' + (match.priceMin ? '$' + match.priceMin + (match.priceMax ? ' ~ $' + match.priceMax : '') : '\u2014') + '</div>' +
+    '<div class="match-key">FeedID</div><div class="match-val" style="font-family:var(--mono);font-size:12px;">' + esc(match.feedId || '\u2014') + '</div></div>' +
     stylesHtml +
-    '<div class="copy-block"><button class="copy-btn-sm" id="lele-copy-' + idx + '">複製</button><pre id="lele-pre-' + idx + '">' + esc(copyText) + '</pre></div>' +
-    botHtml;
+    '<div class="copy-block"><button class="copy-btn-sm" id="lele-copy-' + idx + '">\u8907\u88fd</button><pre id="lele-pre-' + idx + '">' + esc(copyText) + '</pre></div>' +
+    botHtml + addBtn;
 }
 
-function renderNewBody(calItem, idx) {
-  return '<div class="new-marker">🆕 此商品在樂樂資料庫中找不到對應商品，可能是新品或名稱差異太大。</div>' + renderBotBlock(calItem, idx);
+function renderNewBody(r, idx) {
+  var botHtml = renderBotBlock(r.calItem, idx);
+  var addBtn = '<div style="margin-top:12px;"><button class="btn btn-yellow" onclick="openModal(' + idx + ',true)" style="font-size:13px;">\ud83c\udd95 \u6574\u7406\u4e0a\u67b6</button></div>';
+  return '<div class="new-marker">\ud83c\udd95 \u6b64\u5546\u54c1\u5728\u6a02\u6a02\u8cc7\u6599\u5eab\u4e2d\u627e\u4e0d\u5230\u5c0d\u61c9\u5546\u54c1\uff0c\u53ef\u80fd\u662f\u65b0\u54c1\u6216\u540d\u7a31\u5dee\u7570\u592a\u5927\u3002</div>' + botHtml + addBtn;
 }
-
-var EMOJI_LIST = ['❤️','🚩','✨','🎉','👍','🔔','😘','🥰','🎀','👉','🫰','🎈','🎁','🛒','💎','💋','📞','📍','📌','⏰','🌈','⚡','🔥','💥','🚫','❓','❗','‼️','⁉️','💯'];
 
 function renderBotBlock(calItem, idx) {
   var botItem = findBotItem(calItem.name);
@@ -401,10 +454,10 @@ function renderBotBlock(calItem, idx) {
     return '<button class="emoji-btn" onclick="insertEmoji(' + idx + ',\'' + e + '\')">' + e + '</button>';
   }).join('');
   return '<div class="bot-block">' +
-    '<div class="bot-block-title">📱 供應商文案</div>' +
+    '<div class="bot-block-title">\ud83d\udcf1 \u4f9b\u61c9\u5546\u6587\u6848</div>' +
     '<div style="display:flex;gap:6px;margin-bottom:8px;">' +
-    '<button class="copy-btn-sm" id="bot-copy-' + idx + '">複製文案</button>' +
-    '<button class="copy-btn-sm" onclick="toggleEdit(' + idx + ')">✏️ 編輯</button>' +
+    '<button class="copy-btn-sm" id="bot-copy-' + idx + '">\u8907\u88fd\u6587\u6848</button>' +
+    '<button class="copy-btn-sm" onclick="toggleEdit(' + idx + ')">\u270f\ufe0f \u7de8\u8f2f</button>' +
     '</div>' +
     '<div class="emoji-bar" id="emoji-bar-' + idx + '">' + emojiButtons + '</div>' +
     '<textarea id="bot-ta-' + idx + '" readonly style="width:100%;min-height:180px;font-family:var(--sans);font-size:13px;line-height:1.7;border:1px solid #c8e0f8;border-radius:4px;padding:8px;background:white;resize:vertical;">' +
@@ -415,8 +468,7 @@ function toggleEdit(idx) {
   var ta = document.getElementById('bot-ta-' + idx);
   var bar = document.getElementById('emoji-bar-' + idx);
   if (!ta) return;
-  var isReadonly = ta.hasAttribute('readonly') || ta.readOnly;
-  if (isReadonly) {
+  if (ta.readOnly) {
     ta.removeAttribute('readonly');
     ta.style.background = '#fffbe6';
     if (bar) bar.classList.add('show');
@@ -433,8 +485,7 @@ function insertEmoji(idx, emoji) {
   var ta = document.getElementById('bot-ta-' + idx);
   if (!ta || ta.readOnly) return;
   var start = ta.selectionStart, end = ta.selectionEnd;
-  var val = ta.value;
-  ta.value = val.slice(0, start) + emoji + val.slice(end);
+  ta.value = ta.value.slice(0, start) + emoji + ta.value.slice(end);
   var pos = start + emoji.length;
   ta.selectionStart = ta.selectionEnd = pos;
   ta.focus();
@@ -443,15 +494,15 @@ function insertEmoji(idx, emoji) {
 
 function toggleItem(idx) { document.getElementById('item-' + idx).classList.toggle('open'); }
 
-// 樂樂複製按鈕用 event delegation
+// lele copy delegation
 document.addEventListener('click', function(e) {
   var m = e.target.id && e.target.id.match(/^lele-copy-(\d+)$/);
   if (m) {
     var pre = document.getElementById('lele-pre-' + m[1]);
     if (!pre) return;
     navigator.clipboard.writeText(pre.textContent).then(function() {
-      e.target.textContent = '已複製 ✓'; e.target.classList.add('copied');
-      setTimeout(function() { e.target.textContent = '複製'; e.target.classList.remove('copied'); }, 2000);
+      e.target.textContent = '\u5df2\u8907\u88fd \u2713'; e.target.classList.add('copied');
+      setTimeout(function() { e.target.textContent = '\u8907\u88fd'; e.target.classList.remove('copied'); }, 2000);
     });
   }
 });
@@ -459,6 +510,285 @@ document.addEventListener('click', function(e) {
 function showEmpty() { document.getElementById('resultsArea').style.display = 'none'; document.getElementById('emptyState').style.display = ''; }
 function setLog(msg) { document.getElementById('log').textContent = msg; }
 function esc(str) { return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ══════════════════════════════════════
+//  Modal – 整理上架
+// ══════════════════════════════════════
+function openModal(idx, isNew) {
+  var items = getFilteredItems();
+  var r = items[idx];
+  if (!r) return;
+  var calItem = r.calItem;
+  var match = r.match;
+  var botItem = findBotItem(calItem.name);
+  var botText = botItem ? cleanText(botItem.text) : '';
+  // 如果 textarea 有被編輯過，優先用編輯後的
+  var ta = document.getElementById('bot-ta-' + idx);
+  if (ta) botText = ta.value;
+
+  modalCtx = { idx: idx, isNew: isNew, match: match, calItem: calItem };
+
+  document.getElementById('modalTitle').textContent = isNew ? '\ud83c\udd95 \u65b0\u54c1\u4e0a\u67b6' : '\u2705 \u6574\u7406\u4e0a\u67b6';
+  document.getElementById('mName').value = calItem.name;
+
+  // price: from match or bot text
+  var price = '';
+  if (match && match.priceMin) price = match.priceMin;
+  if (!price && botText) price = parsePriceFromBot(botText);
+  document.getElementById('mPrice').value = price;
+
+  // close date
+  var closeDate = parseCloseDateFromBot(botText);
+  document.getElementById('mCloseDate').value = closeDate;
+
+  // temperature: only show for new items
+  document.getElementById('mTempRow').style.display = isNew ? '' : 'none';
+  document.getElementById('mTemp').value = '\u51b7\u51cd';
+
+  // styles
+  var tbody = document.getElementById('mStylesBody');
+  tbody.innerHTML = '';
+  if (match && match.styles && match.styles.length) {
+    match.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
+  }
+
+  // description
+  document.getElementById('mDesc').value = botText;
+
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  modalCtx = null;
+}
+
+function addModalStyleRow(name, price) {
+  var tbody = document.getElementById('mStylesBody');
+  var tr = document.createElement('tr');
+  tr.innerHTML = '<td><input type="text" value="' + esc(name || '') + '" placeholder="\u6b3e\u5f0f\u540d\u7a31"></td>' +
+    '<td><input type="number" value="' + esc(String(price || '')) + '" placeholder="\u552e\u50f9" style="width:90px;"></td>' +
+    '<td><button class="del-style-btn" onclick="this.closest(\'tr\').remove()">\u2716</button></td>';
+  tbody.appendChild(tr);
+}
+
+function getFilteredItems() {
+  if (currentFilter === 'matched') return matchResults.filter(function(r) { return !r.isNew; });
+  if (currentFilter === 'new') return matchResults.filter(function(r) { return r.isNew; });
+  return matchResults;
+}
+
+function confirmModal() {
+  if (!modalCtx) return;
+  var name = document.getElementById('mName').value.trim();
+  var price = document.getElementById('mPrice').value.trim();
+  var closeDate = document.getElementById('mCloseDate').value.trim();
+  var temp = document.getElementById('mTemp').value;
+  var desc = document.getElementById('mDesc').value;
+  var isNew = modalCtx.isNew;
+  var match = modalCtx.match;
+
+  if (!name) { alert('\u8acb\u8f38\u5165\u5546\u54c1\u540d\u7a31'); return; }
+  if (!price) { alert('\u8acb\u8f38\u5165\u552e\u50f9'); return; }
+
+  // collect styles from table
+  var styles = [];
+  var rows = document.getElementById('mStylesBody').querySelectorAll('tr');
+  rows.forEach(function(tr) {
+    var inputs = tr.querySelectorAll('input');
+    var sn = inputs[0].value.trim();
+    var sp = inputs[1].value.trim();
+    if (sn) styles.push({ name: sn, price: sp || price });
+  });
+
+  // generate id for new items
+  var feedId = '';
+  var customId = '';
+  if (!isNew && match && match.feedId) {
+    feedId = match.feedId;
+    customId = match.feedId;
+  } else {
+    // 新品編號：溫度碼 + YYMMDD + 兩位流水號
+    var tempCode = temp === '\u51b7\u51cd' ? '1' : temp === '\u51b7\u85cf' ? '2' : '3';
+    var dateStr = document.getElementById('targetDate').value; // YYYY-MM-DD
+    var yy = dateStr.slice(2,4), mm = dateStr.slice(5,7), dd = dateStr.slice(8,10);
+    var seq = String(newItemSeq).padStart(2, '0');
+    newItemSeq++;
+    customId = tempCode + yy + mm + dd + seq;
+    feedId = customId;
+  }
+
+  batchList.push({
+    name: name,
+    price: price,
+    closeDate: closeDate,
+    temp: temp,
+    styles: styles,
+    desc: desc,
+    isNew: isNew,
+    feedId: feedId,
+    customId: customId,
+    match: match
+  });
+
+  closeModal();
+  renderBatch();
+}
+
+// ══════════════════════════════════════
+//  Batch list
+// ══════════════════════════════════════
+function renderBatch() {
+  document.getElementById('batchCount').textContent = batchList.length;
+  var body = document.getElementById('batchBody');
+  var actions = document.getElementById('batchActions');
+  if (!batchList.length) {
+    body.innerHTML = '<div class="batch-empty">\u5c1a\u672a\u52a0\u5165\u4efb\u4f55\u5546\u54c1\uff0c\u8acb\u5f9e\u4e0a\u65b9\u9ede\u64ca\u300c\u6574\u7406\u4e0a\u67b6\u300d</div>';
+    actions.style.display = 'none';
+    return;
+  }
+  actions.style.display = '';
+  var html = '<table class="batch-table"><tr><th>#</th><th>\u5546\u54c1\u540d\u7a31</th><th>\u552e\u50f9</th><th>\u7d50\u55ae\u65e5</th><th>\u7de8\u865f</th><th></th></tr>';
+  batchList.forEach(function(item, i) {
+    html += '<tr><td>' + (i+1) + '</td>' +
+      '<td>' + esc(item.name) + (item.isNew ? ' <span class="new-tag">\u65b0\u54c1</span>' : '') + '</td>' +
+      '<td>$' + esc(item.price) + '</td>' +
+      '<td>' + esc(item.closeDate || '\u2014') + '</td>' +
+      '<td style="font-family:var(--mono);font-size:12px;">' + esc(item.customId) + '</td>' +
+      '<td><button class="copy-btn-sm" onclick="removeBatch(' + i + ')" style="color:var(--accent);">\u2716</button></td></tr>';
+  });
+  html += '</table>';
+  body.innerHTML = html;
+}
+
+function removeBatch(i) {
+  batchList.splice(i, 1);
+  renderBatch();
+}
+
+function clearBatch() {
+  if (!confirm('\u78ba\u5b9a\u8981\u6e05\u9664\u5168\u90e8 ' + batchList.length + ' \u7b46\uff1f')) return;
+  batchList = [];
+  newItemSeq = 1;
+  renderBatch();
+}
+
+// ══════════════════════════════════════
+//  Export XLS
+// ══════════════════════════════════════
+function exportXLS() {
+  if (!batchList.length) return;
+
+  var headers = [
+    '\u4fdd\u7559\u6b04\u4f4d',
+    '\u81ea\u5b9a\u7fa9\u7de8\u865f',
+    '\u5546\u54c1\u540d\u7a31',
+    '\u4e3b\u8981\u5206\u985e\n(\u6b3e\u5f0f\u540d\u7a31\uff0c\u4ee5\u534a\u5f62\u9017\u865f\u5206\u9694)',
+    '\u7d30\u9805\u4e00\n(\u6b3e\u5f0f\u4e8c\u540d\u7a31\uff0c\u4ee5\u534a\u5f62\u9017\u865f\u5206\u9694)',
+    '\u7d30\u9805\u4e8c\n(\u6b3e\u5f0f\u4e09\u540d\u7a31\uff0c\u4ee5\u534a\u5f62\u9017\u865f\u5206\u9694)',
+    '\u552e\u50f9\n(\u4ee5\u534a\u5f62\u9017\u865f\u5206\u9694)',
+    'VIP\u50f9\n(\u4ee5\u534a\u5f62\u9017\u865f\u5206\u9694)',
+    '\u6210\u672c\n(\u4ee5\u534a\u5f62\u9017\u865f\u5206\u9694)',
+    '\u5eab\u5b58\n(\u4ee5\u534a\u5f62\u9017\u865f\u5206\u9694)',
+    '\u50c5\u9650VIP\n(1=\u662f, \u7a7a\u767d=\u5426)',
+    '\u4e0a\u67b6\u500b\u4eba\u8ce3\u5834\n(1=\u662f, \u7a7a\u767d=\u5426)',
+    '\u5546\u54c1\u5206\u985e\n(\u4ee5\u534a\u5f62\u9017\u865f\u5206\u9694)',
+    '\u50c5\u4f9b\u73fe\u8ca8\n(1=\u662f, \u7a7a\u767d=\u5426)',
+    '\u7981\u6b62\u7d50\u55ae\n(1=\u662f, \u7a7a\u767d=\u5426)',
+    '\u6210\u5718\u4eba\u6578',
+    '\u6536\u55ae\u6642\u9593\n(yyyy/M/d  hh:mm:ss AM/PM)',
+    '\u81ea\u5b9a\u7fa9\u6a19\u7c64\n(\u4ee5\u534a\u5f62\u9017\u865f\u5206\u9694)',
+    '\u5009\u5132\u4f4d\u7f6e',
+    '\u9810\u8a2d\u4f9b\u8ca8\u5546',
+    '\u5546\u54c1\u63cf\u8ff0',
+    '\u5546\u54c1\u5099\u8a3b',
+    '\u516c\u958b\u5099\u8a3b',
+    '\u6a94\u6848\u7248\u672c'
+  ];
+
+  var data = [headers];
+  var dateStr = document.getElementById('targetDate').value;
+
+  batchList.forEach(function(item) {
+    var id = item.customId;
+    var hasStyles = item.styles && item.styles.length > 0;
+
+    // 商品名稱格式
+    var titleStr = '\u2b1c' + item.name + '\ud83d\udcb0' + item.price + '\u23f0' + (item.closeDate || '') + '\u7d50\u55ae#' + id + '#';
+
+    // 主要分類
+    var mainCat = '';
+    if (hasStyles) {
+      mainCat = item.styles.map(function(s, si) {
+        var styleId = id + si;
+        return s.name + '#' + styleId + '#';
+      }).join(',');
+    } else {
+      mainCat = item.name;
+    }
+
+    // 售價
+    var priceStr = '';
+    if (hasStyles) {
+      priceStr = item.styles.map(function(s) { return s.price || item.price; }).join(',');
+    } else {
+      priceStr = item.price;
+    }
+
+    // 收單時間：結單日轉 YYYY/M/D  23:55:00 PM
+    var closeTimeStr = '';
+    if (item.closeDate) {
+      var parts = item.closeDate.split('/');
+      if (parts.length === 2) {
+        var year = new Date(dateStr).getFullYear();
+        var cm = parseInt(parts[0], 10);
+        var cd = parseInt(parts[1], 10);
+        // 如果結單月份小於開團月份，跨年
+        var orderMonth = parseInt(dateStr.slice(5,7), 10);
+        if (cm < orderMonth) year++;
+        closeTimeStr = year + '/' + cm + '/' + cd + '  23:55:00 PM';
+      }
+    }
+
+    // 商品描述
+    var descText = '10-20\u5929\u5230\u8ca8\u901a\u77e5\n\u23f0' + (item.closeDate || '') + '\u7d50\u55ae\n\n' + (item.desc || '');
+
+    var row = [
+      '',           // 保留欄位
+      id,           // 自定義編號
+      titleStr,     // 商品名稱
+      mainCat,      // 主要分類
+      '',           // 細項一
+      '',           // 細項二
+      priceStr,     // 售價
+      '',           // VIP價
+      '',           // 成本
+      '',           // 庫存
+      '',           // 僅限VIP
+      '1',          // 上架個人賣場
+      '\u5718\u8cfc\u5546\u54c1\ud83d\udc95', // 商品分類
+      '',           // 僅供現貨
+      '1',          // 禁止結單
+      '',           // 成團人數
+      closeTimeStr, // 收單時間
+      '',           // 自定義標籤
+      '',           // 倉儲位置
+      '',           // 預設供貨商
+      descText,     // 商品描述
+      '',           // 商品備註
+      '',           // 公開備註
+      '1'           // 檔案版本
+    ];
+    data.push(row);
+  });
+
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '\u5546\u54c1\u532f\u5165');
+
+  var today = dateStr.replace(/-/g, '');
+  XLSX.writeFile(wb, '\u6a02\u6a02\u4e0a\u67b6_' + today + '.xls', { bookType: 'xls' });
+}
 </script>
 </body>
 </html>
