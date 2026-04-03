@@ -88,6 +88,29 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
 .batch-actions{display:flex;gap:8px;margin-top:16px}
 .batch-empty{text-align:center;padding:30px;color:var(--text-muted);font-size:13px}
 .new-tag{display:inline-block;background:var(--yellow-light);color:var(--yellow);font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px}
+/* 已加入批次標記 */
+.result-item.in-batch>.result-header{background:#e8f5e9;border-left:4px solid var(--green)}
+.result-item.in-batch>.result-header .result-name::after{content:'  \u2705 \u5df2\u52a0\u5165';font-size:11px;color:var(--green);font-weight:700;margin-left:8px}
+/* 底部浮動批次 bar */
+.batch-bar{position:fixed;bottom:0;left:0;right:0;background:var(--text);color:white;z-index:150;transform:translateY(100%);transition:transform .25s}
+.batch-bar.show{transform:translateY(0)}
+.batch-bar-header{display:flex;align-items:center;justify-content:space-between;padding:10px 24px;cursor:pointer;user-select:none}
+.batch-bar-title{font-size:14px;font-weight:700}
+.batch-bar-count{background:var(--yellow);color:white;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700;margin-left:8px}
+.batch-bar-toggle{font-size:12px;transition:transform .2s}
+.batch-bar.expanded .batch-bar-toggle{transform:rotate(180deg)}
+.batch-bar-body{display:none;max-height:40vh;overflow-y:auto;background:var(--surface);color:var(--text);border-top:1px solid var(--border)}
+.batch-bar.expanded .batch-bar-body{display:block}
+.batch-bar-actions{display:flex;gap:8px;padding:10px 24px;background:var(--surface);border-top:1px solid var(--border)}
+.batch-bar.expanded .batch-bar-actions{display:flex}
+.batch-bar:not(.expanded) .batch-bar-actions{display:none}
+.bb-table{width:100%;border-collapse:collapse;font-size:13px}
+.bb-table th{text-align:left;padding:8px 16px;background:var(--tag-bg);font-size:11px;font-weight:700;color:var(--text-muted)}
+.bb-table td{padding:6px 16px;border-bottom:1px solid var(--border)}
+.bb-table tr:hover{background:var(--tag-bg)}
+.bb-table .bb-edit{color:var(--blue);cursor:pointer;text-decoration:underline}
+.bb-table .bb-del{color:var(--accent);cursor:pointer;border:none;background:none;font-size:15px;padding:2px 6px}
+body{padding-bottom:52px}
 </style>
 </head>
 <body>
@@ -115,14 +138,18 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
     <div class="icon">📋</div><p>今日日曆沒有商品事件</p>
   </div>
 
-  <!-- Batch upload section -->
-  <div class="batch-section" id="batchSection">
-    <div class="batch-title">📦 批次上架清單（<span id="batchCount">0</span> 筆）</div>
-    <div id="batchBody"></div>
-    <div class="batch-actions" id="batchActions" style="display:none;">
-      <button class="btn btn-blue" onclick="exportXLS()">📥 匯出 XLS</button>
-      <button class="btn btn-accent" onclick="clearBatch()">🗑️ 清除全部</button>
-    </div>
+</div>
+
+<!-- 底部浮動批次 bar -->
+<div class="batch-bar" id="batchBar">
+  <div class="batch-bar-header" onclick="toggleBatchBar()">
+    <div><span class="batch-bar-title">📦 批次上架</span><span class="batch-bar-count" id="batchCount">0</span></div>
+    <span class="batch-bar-toggle">▲</span>
+  </div>
+  <div class="batch-bar-body" id="batchBody"></div>
+  <div class="batch-bar-actions">
+    <button class="btn btn-blue" onclick="exportXLS()" style="font-size:13px;">📥 匯出 XLS</button>
+    <button class="btn btn-accent" onclick="clearBatch()" style="font-size:13px;">🗑️ 清除全部</button>
   </div>
 </div>
 
@@ -797,7 +824,7 @@ function confirmModal() {
   });
 
   // 從 mName 的 #...# 提取編號
-  var idMatch = name.match(/#([^#]+)#/);
+  var idMatch = name.match(/#([^#]*)#/);
   var customId = idMatch ? idMatch[1] : '';
   var feedId = '';
   if (!isNew && match && match.feedId) {
@@ -807,7 +834,10 @@ function confirmModal() {
   }
   if (!customId) customId = feedId;
 
-  batchList.push({
+  // 日曆商品名稱（用於標記）
+  var calName = (modalCtx.calItem && modalCtx.calItem.name) ? modalCtx.calItem.name : '';
+
+  var entry = {
     name: name,
     price: price,
     closeDate: closeDate,
@@ -816,48 +846,105 @@ function confirmModal() {
     isNew: isNew,
     feedId: feedId,
     customId: customId,
-    match: match
-  });
+    match: match,
+    calName: calName
+  };
+
+  // 如果是編輯既有批次項目，替換而非新增
+  if (typeof modalCtx.editingBatchIdx === 'number' && modalCtx.editingBatchIdx >= 0) {
+    entry.calName = batchList[modalCtx.editingBatchIdx].calName || calName;
+    batchList[modalCtx.editingBatchIdx] = entry;
+  } else {
+    batchList.push(entry);
+  }
 
   closeModal();
   renderBatch();
+  markBatchItems();
 }
 
 // ══════════════════════════════════════
-//  Batch list
+//  Batch list (floating bar)
 // ══════════════════════════════════════
+function toggleBatchBar() {
+  document.getElementById('batchBar').classList.toggle('expanded');
+}
+
 function renderBatch() {
+  var bar = document.getElementById('batchBar');
   document.getElementById('batchCount').textContent = batchList.length;
-  var body = document.getElementById('batchBody');
-  var actions = document.getElementById('batchActions');
-  if (!batchList.length) {
-    body.innerHTML = '<div class="batch-empty">\u5c1a\u672a\u52a0\u5165\u4efb\u4f55\u5546\u54c1\uff0c\u8acb\u5f9e\u4e0a\u65b9\u9ede\u64ca\u300c\u6574\u7406\u4e0a\u67b6\u300d</div>';
-    actions.style.display = 'none';
-    return;
+  if (batchList.length) {
+    bar.classList.add('show');
+  } else {
+    bar.classList.remove('show', 'expanded');
   }
-  actions.style.display = '';
-  var html = '<table class="batch-table"><tr><th>#</th><th>\u5546\u54c1\u540d\u7a31</th><th>\u552e\u50f9</th><th>\u7d50\u55ae\u65e5</th><th>\u7de8\u865f</th><th></th></tr>';
+  var body = document.getElementById('batchBody');
+  if (!batchList.length) { body.innerHTML = ''; return; }
+  var html = '<table class="bb-table"><tr><th>#</th><th>\u5546\u54c1\u540d\u7a31</th><th>\u552e\u50f9</th><th>\u7d50\u55ae\u65e5</th><th></th></tr>';
   batchList.forEach(function(item, i) {
+    var shortName = cleanCalName(item.name);
     html += '<tr><td>' + (i+1) + '</td>' +
-      '<td>' + esc(item.name) + (item.isNew ? ' <span class="new-tag">\u65b0\u54c1</span>' : '') + '</td>' +
+      '<td><span class="bb-edit" onclick="editBatch(' + i + ')">' + esc(shortName) + '</span>' +
+      (item.isNew ? ' <span class="new-tag">\u65b0\u54c1</span>' : '') + '</td>' +
       '<td>$' + esc(item.price) + '</td>' +
       '<td>' + esc(item.closeDate || '\u2014') + '</td>' +
-      '<td style="font-family:var(--mono);font-size:12px;">' + esc(item.customId) + '</td>' +
-      '<td><button class="copy-btn-sm" onclick="removeBatch(' + i + ')" style="color:var(--accent);">\u2716</button></td></tr>';
+      '<td><button class="bb-del" onclick="removeBatch(' + i + ')">\u2716</button></td></tr>';
   });
   html += '</table>';
   body.innerHTML = html;
 }
 
+function editBatch(i) {
+  var item = batchList[i];
+  if (!item) return;
+  // 開 Modal 填入該批次項目的資料讓使用者修改
+  modalCtx = { idx: -1, isNew: item.isNew, match: item.match, calItem: null, rawBotText: '', editingBatchIdx: i };
+  document.getElementById('modalTitle').textContent = '\u270f\ufe0f \u7de8\u8f2f\u7b2c ' + (i+1) + ' \u7b46';
+  document.getElementById('mName').value = item.name;
+  document.getElementById('mPrice').value = item.price;
+  document.getElementById('mCloseDate').value = item.closeDate || '';
+  document.getElementById('mTempRow').style.display = 'none';
+  var tbody = document.getElementById('mStylesBody');
+  tbody.innerHTML = '';
+  if (item.styles && item.styles.length) {
+    item.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
+  }
+  document.getElementById('mDesc').value = item.desc || '';
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
 function removeBatch(i) {
   batchList.splice(i, 1);
   renderBatch();
+  markBatchItems();
 }
 
 function clearBatch() {
   if (!confirm('\u78ba\u5b9a\u8981\u6e05\u9664\u5168\u90e8 ' + batchList.length + ' \u7b46\uff1f')) return;
   batchList = [];
   renderBatch();
+  markBatchItems();
+}
+
+// 標記日曆清單中已加入批次的商品
+function markBatchItems() {
+  // 收集 batchList 裡所有商品名稱（calItem.name）
+  var batchNames = {};
+  batchList.forEach(function(item) {
+    if (item.calName) batchNames[item.calName] = true;
+  });
+  // 掃描所有 result-item
+  var items = document.querySelectorAll('.result-item');
+  items.forEach(function(el) {
+    var nameEl = el.querySelector('.result-name');
+    if (!nameEl) return;
+    var name = nameEl.textContent;
+    if (batchNames[name]) {
+      el.classList.add('in-batch');
+    } else {
+      el.classList.remove('in-batch');
+    }
+  });
 }
 
 // ══════════════════════════════════════
