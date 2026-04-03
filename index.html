@@ -408,10 +408,33 @@ function findBotItem(calName) {
   return bestScore >= 0.7 ? best : null;
 }
 
+// ── Extract search keyword from calendar name ──
+function extractSearchKey(name) {
+  // 去掉括號格式 ($)(emoji)(數字)(/) 等
+  var s = name.replace(/\([^)]*\)/g, '');
+  // 去掉 #...#、💰數字、⏰日期結單、⬜
+  s = s.replace(/#[^#]*#/g, '').replace(/\ud83d\udcb0\s*\d+/g, '').replace(/\u23f0[^結]*\u7d50\u55ae/g, '').replace(/\u2b1c/g, '');
+  // 去掉 ±%*（）
+  s = s.replace(/[±%*（）\[\]]/g, '');
+  // 提取中文字
+  var cjk = s.replace(/[^\u4e00-\u9fff]/g, '');
+  // 如果有）或）後面的內容，取後面的（去掉品牌前綴如「禾田）」）
+  var brandCut = name.indexOf('\uff09');
+  if (brandCut === -1) brandCut = name.indexOf(')');
+  if (brandCut !== -1) {
+    var after = name.slice(brandCut + 1).replace(/[^\u4e00-\u9fff]/g, '');
+    if (after.length >= 2) cjk = after;
+  }
+  return cjk.slice(0, 5);
+}
+
 // ── Supabase search ──
 async function searchSupabase(keyword) {
-  var cjk = keyword.replace(/[^\u4e00-\u9fff]/g, '');
-  var query = cjk.slice(0, 3) || keyword.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4);
+  var query = extractSearchKey(keyword);
+  if (!query || query.length < 2) {
+    // fallback: 取任意中文
+    query = keyword.replace(/[^\u4e00-\u9fff]/g, '').slice(0, 4);
+  }
   if (!query) return null;
   var url = SUPABASE_URL + '/rest/v1/gb_lele_products?title=ilike.*' + encodeURIComponent(query) + '*&select=id,title,price_min,price_max,img_url,feed_id,styles,description&limit=10';
   var res = await fetch(url, { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } });
@@ -422,7 +445,7 @@ async function searchSupabase(keyword) {
     var s = similarity(keyword, rows[i].title);
     if (s > bestScore) { bestScore = s; best = rows[i]; }
   }
-  if (bestScore < 0.35) return null;
+  if (bestScore < 0.25) return null;
   return {
     id: best.id, title: best.title, priceMin: best.price_min, priceMax: best.price_max,
     imgUrl: best.img_url, feedId: best.feed_id,
@@ -463,8 +486,18 @@ function fetchCalendar() {
 
 // ── Matching ──
 function tokenize(str) {
-  return str.replace(/#[^#]*#/g, '').replace(/\$[\d,]+/g, '').replace(/\d+\/\d+\u7d50\u55ae/g, '')
-    .replace(/[^\u4e00-\u9fff\u3400-\u4dbfa-zA-Z0-9]/g, '').trim();
+  // 去掉括號格式 ($)(emoji)(數字)(/) 等
+  var s = str.replace(/\([^)]*\)/g, '');
+  // 去掉 #...#、$數字、日期結單、emoji
+  s = s.replace(/#[^#]*#/g, '').replace(/[\$\uff04][\d,]+/g, '').replace(/\d+\/\d+\u7d50\u55ae/g, '');
+  // 去掉 ±%*（）⬜💰⏰ 等符號
+  s = s.replace(/[±%*（）\u2b1c\ud83d\udcb0\u23f0]/g, '');
+  // 去掉數字+單位（g ml 入 片 包 顆 條 罐 瓶 盒 袋 組 份 支 杯 碗 塊 個 粒 串 尾 隻 斤 公斤 kg）
+  s = s.replace(/\d+\s*(g|ml|kg|入|片|包|顆|條|罐|瓶|盒|袋|組|份|支|杯|碗|塊|個|粒|串|尾|隻|斤|公斤)/gi, '');
+  // 去掉剩餘數字
+  s = s.replace(/\d+/g, '');
+  // 只留中文字
+  return s.replace(/[^\u4e00-\u9fff\u3400-\u4dbf]/g, '').trim();
 }
 function similarity(a, b) {
   var ta = tokenize(a), tb = tokenize(b);
