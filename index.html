@@ -104,6 +104,7 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
       <div id="log"></div>
       <div style="margin-top:12px;">
         <button class="btn btn-green" onclick="fetchCalendar()" id="fetchBtn">📅 讀取今日商品</button>
+        <button class="btn btn-secondary" onclick="refreshBotItems()" id="refreshBotBtn" style="margin-top:8px;">🔄 重新整理文案</button>
       </div>
     </div>
   </div>
@@ -143,6 +144,54 @@ window.addEventListener('DOMContentLoaded', function() {
 
 function saveApiKey() { localStorage.setItem('gcal_api_key', document.getElementById('apiKey').value); }
 function saveCalId() { localStorage.setItem('gcal_cal_id', document.getElementById('calId').value); }
+
+function refreshBotItems() {
+  var btn = document.getElementById('refreshBotBtn');
+  btn.disabled = true;
+  btn.textContent = '更新中…';
+  fetch('https://group-buy-bot.onrender.com/today', { cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        botItems = data.data || [];
+        document.getElementById('headerStatus').textContent = '文案庫 ' + botItems.length + ' 筆';
+        // 如果已有比對結果，重新渲染
+        if (matchResults.length) renderFiltered();
+      }
+    }).catch(function(e) { console.log('Bot API:', e.message); })
+    .finally(function() {
+      btn.disabled = false;
+      btn.textContent = '🔄 重新整理文案';
+    });
+}
+
+function cleanText(text) {
+  // 符號對應
+  text = text.replace(/\(emoji\)/gi, '');
+  text = text.replace(/\(\$\)/g, '$');
+  text = text.replace(/\(\/\)/g, '/');
+  text = text.replace(/\(!\)/g, '!');
+  text = text.replace(/\(\?\)/g, '?');
+  text = text.replace(/\(heart\)/gi, '');
+  text = text.replace(/\(wink\)/gi, '');
+  // (數字) → 數字，可多個連續 ex: (1)(8)(9) → 189
+  text = text.replace(/(\(\d+\))+/g, function(m) {
+    return m.replace(/\((\d+)\)/g, '$1');
+  });
+  // 其他 (xxx) → 刪掉（剩餘未處理的）
+  text = text.replace(/\([^)]{1,10}\)/g, '');
+  // 「到貨通知」下一行加「結單」
+  var lines = text.split(String.fromCharCode(10));
+  for (var _i = 0; _i < lines.length - 1; _i++) {
+    if (lines[_i].trim() === '到貨通知' && lines[_i+1].trim() && lines[_i+1].indexOf('結單') === -1) {
+      lines[_i+1] = lines[_i+1].trim() + '結單';
+    }
+  }
+  text = lines.join(String.fromCharCode(10));
+  // 清理多餘空行（超過2個換行壓成2個）
+  text = text.replace(/[\n]{3,}/g, String.fromCharCode(10) + String.fromCharCode(10));
+  return text.trim();
+}
 
 function fetchBotItems() {
   fetch('https://group-buy-bot.onrender.com/today', { cache: 'no-store' })
@@ -308,15 +357,15 @@ function renderFiltered() {
   // bind bot copy buttons
   items.forEach(function(r, i) {
     var btn = document.getElementById('bot-copy-' + i);
-    if (btn && botTextMap[i]) {
-      (function(b, text) {
-        b.addEventListener('click', function() {
-          navigator.clipboard.writeText(text).then(function() {
-            b.textContent = '已複製 ✓'; b.classList.add('copied');
-            setTimeout(function() { b.textContent = '複製文案'; b.classList.remove('copied'); }, 2000);
-          });
+    if (btn) {
+      btn.addEventListener('click', function() {
+        var ta = document.getElementById('bot-ta-' + i);
+        var text = ta ? ta.value : (botTextMap[i] || '');
+        navigator.clipboard.writeText(text).then(function() {
+          btn.textContent = '已複製 ✓'; btn.classList.add('copied');
+          setTimeout(function() { btn.textContent = '複製文案'; btn.classList.remove('copied'); }, 2000);
         });
-      })(btn, botTextMap[i]);
+      });
     }
   });
 }
@@ -361,10 +410,31 @@ function renderNewBody(calItem, idx) {
 function renderBotBlock(calItem, idx) {
   var botItem = findBotItem(calItem.name);
   if (!botItem) return '';
-  botTextMap[idx] = botItem.text;
-  return '<div class="bot-block"><div class="bot-block-title">📱 供應商文案</div>' +
+  var cleaned = cleanText(botItem.text);
+  botTextMap[idx] = cleaned;
+  return '<div class="bot-block">' +
+    '<div class="bot-block-title">📱 供應商文案</div>' +
+    '<div style="display:flex;gap:6px;margin-bottom:8px;">' +
     '<button class="copy-btn-sm" id="bot-copy-' + idx + '">複製文案</button>' +
-    '<pre>' + esc(botItem.text) + '</pre></div>';
+    '<button class="copy-btn-sm" onclick="toggleEdit(' + idx + ')">✏️ 編輯</button>' +
+    '</div>' +
+    '<textarea id="bot-ta-' + idx + '" readonly style="width:100%;min-height:180px;font-family:var(--sans);font-size:13px;line-height:1.7;border:1px solid #c8e0f8;border-radius:4px;padding:8px;background:white;resize:vertical;">' +
+    esc(cleaned) + '</textarea></div>';
+}
+
+function toggleEdit(idx) {
+  var ta = document.getElementById('bot-ta-' + idx);
+  if (!ta) return;
+  var isReadonly = ta.hasAttribute('readonly') || ta.readOnly;
+  if (isReadonly) {
+    ta.removeAttribute('readonly');
+    ta.style.background = '#fffbe6';
+    ta.focus();
+  } else {
+    ta.readOnly = true;
+    ta.style.background = 'white';
+    botTextMap[idx] = ta.value;
+  }
 }
 
 function toggleItem(idx) { document.getElementById('item-' + idx).classList.toggle('open'); }
