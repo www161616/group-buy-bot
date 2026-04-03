@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>開團助手 — 包子媽生鮮小舖</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap');
+
+  :root {
+    --bg: #f5f3ee;
+    --surface: #ffffff;
+    --border: #ddd9d0;
+    --text: #2a2520;
+    --text-muted: #7a7060;
+    --accent: #c0392b;
+    --accent-light: #fdf0ef;
+    --green: #27ae60;
+    --green-light: #edf7f1;
+    --yellow: #e67e22;
+    --yellow-light: #fef6ec;
+    --tag-bg: #eceae4;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Noto Sans TC', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  header {
+    background: var(--text);
+    color: white;
+    padding: 0 20px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo { font-size: 15px; font-weight: 700; }
+  .logo span { color: #f0a500; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .header-date { font-size: 12px; color: #aaa; font-family: var(--mono); }
+
+  .container { max-width: 800px; margin: 0 auto; padding: 20px 16px; }
+
+  /* Stats */
+  .stats-row {
+    display: flex; gap: 10px; margin-bottom: 20px;
+  }
+  .stat-box {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; text-align: center;
+  }
+  .stat-num { font-size: 28px; font-weight: 700; font-family: var(--mono); line-height: 1.2; }
+  .stat-num.green { color: var(--green); }
+  .stat-num.red { color: var(--accent); }
+  .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* Controls */
+  .controls {
+    display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 6px; font-family: var(--sans);
+    font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #a93226; }
+  .btn-secondary { background: var(--tag-bg); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .search-input {
+    flex: 1; min-width: 150px;
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+    font-family: var(--sans); font-size: 13px; background: var(--surface);
+  }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+
+  /* Item cards */
+  .item-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 10px; overflow: hidden;
+    transition: box-shadow 0.15s;
+  }
+  .item-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+  .item-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px; cursor: pointer; user-select: none;
+  }
+  .item-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--tag-bg); color: var(--text-muted);
+    font-size: 12px; font-weight: 700; display: flex;
+    align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .item-name { flex: 1; font-weight: 500; font-size: 15px; }
+  .item-time { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+  .item-arrow { color: var(--text-muted); font-size: 12px; transition: transform 0.2s; }
+  .item-card.open .item-arrow { transform: rotate(180deg); }
+
+  .item-body {
+    display: none; border-top: 1px solid var(--border); padding: 16px;
+  }
+  .item-card.open .item-body { display: block; }
+
+  /* Text content */
+  .text-content {
+    background: var(--tag-bg); border-radius: 6px; padding: 14px;
+    font-size: 13px; line-height: 1.8; white-space: pre-wrap;
+    word-break: break-all; position: relative; margin-bottom: 10px;
+  }
+  .copy-btn {
+    display: block; width: 100%;
+    padding: 10px; border-radius: 6px;
+    background: var(--green); color: white;
+    border: none; font-family: var(--sans);
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .copy-btn:hover { background: #219a52; }
+  .copy-btn.copied { background: #888; }
+
+  /* Badge */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500;
+  }
+  .badge-green { background: var(--green-light); color: var(--green); }
+  .badge-gray { background: var(--tag-bg); color: var(--text-muted); }
+
+  /* Empty / loading */
+  .center-msg {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  .center-msg .icon { font-size: 40px; margin-bottom: 12px; }
+  .center-msg p { font-size: 14px; }
+
+  .spinner {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+    border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Settings modal */
+  .modal-bg {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5); z-index: 200;
+    align-items: center; justify-content: center;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--surface); border-radius: 10px;
+    padding: 24px; width: 90%; max-width: 420px;
+  }
+  .modal h3 { font-size: 15px; margin-bottom: 16px; }
+  .modal label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+  .modal input {
+    width: 100%; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 13px; font-family: var(--sans);
+    margin-bottom: 12px;
+  }
+  .modal input:focus { outline: none; border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #888; display: inline-block;
+  }
+  .status-dot.green { background: var(--green); }
+  .status-dot.red { background: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🥟 <span>包子媽</span> 開團助手</div>
+  <div class="header-right">
+    <span class="status-dot" id="statusDot"></span>
+    <span class="header-date" id="headerDate"></span>
+    <button class="btn btn-secondary" style="padding:5px 10px;font-size:12px;" onclick="openSettings()">⚙</button>
+  </div>
+</header>
+
+<div class="container">
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-num green" id="statTotal">—</div>
+      <div class="stat-label">今日開團</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num" id="statAll" style="color:var(--text-muted)">—</div>
+      <div class="stat-label">資料庫總筆數</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <input class="search-input" id="searchInput" placeholder="🔍 搜尋商品名稱..." oninput="renderList()">
+    <button class="btn btn-primary" onclick="loadData()" id="refreshBtn">重新整理</button>
+  </div>
+
+  <div id="listArea"></div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-bg" id="modalBg" onclick="closeSettingsOutside(event)">
+  <div class="modal">
+    <h3>⚙ 設定</h3>
+    <label>Render API 網址</label>
+    <input id="apiUrl" type="text" placeholder="https://group-buy-bot.onrender.com">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeSettings()">取消</button>
+      <button class="btn btn-primary" onclick="saveSettings()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let allItems = [];
+
+// ── Init ──
+window.addEventListener('DOMContentLoaded', () => {
+  // 預設 API URL
+  if (!localStorage.getItem('bot_api_url')) {
+    localStorage.setItem('bot_api_url', 'https://group-buy-bot.onrender.com');
+  }
+
+  // 顯示今天日期
+  const today = new Date().toLocaleDateString('zh-TW', {
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'short'
+  });
+  document.getElementById('headerDate').textContent = today;
+
+  loadData();
+});
+
+// ── Load Data ──
+async function loadData() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 讀取中…';
+  setStatus('');
+
+  const apiUrl = localStorage.getItem('bot_api_url') || 'https://group-buy-bot.onrender.com';
+
+  try {
+    const res = await fetch(`${apiUrl}/today`, { cache: 'no-store' });
+    const data = await res.json();
+
+    if (!data.ok) throw new Error(data.error || '讀取失敗');
+
+    allItems = data.data || [];
+
+    document.getElementById('statTotal').textContent = allItems.length;
+    document.getElementById('statAll').textContent = data.all || '—';
+
+    setStatus('green');
+    renderList();
+
+  } catch (err) {
+    setStatus('red');
+    showError(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '重新整理';
+  }
+}
+
+// ── Render ──
+function renderList() {
+  const area = document.getElementById('listArea');
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+
+  let items = allItems;
+  if (query) {
+    items = allItems.filter(i =>
+      i.productName.toLowerCase().includes(query) ||
+      i.text.toLowerCase().includes(query)
+    );
+  }
+
+  if (items.length === 0) {
+    area.innerHTML = `
+      <div class="center-msg">
+        <div class="icon">${allItems.length === 0 ? '📭' : '🔍'}</div>
+        <p>${allItems.length === 0 ? '今日還沒有開團商品' : '找不到符合的商品'}</p>
+      </div>`;
+    return;
+  }
+
+  area.innerHTML = items.map((item, i) => `
+    <div class="item-card" id="card-${i}">
+      <div class="item-header" onclick="toggleCard(${i})">
+        <div class="item-num">${i + 1}</div>
+        <div class="item-name">${escHtml(item.productName || '（未命名）')}</div>
+        <div class="item-time">${item.time ? item.time.split(' ')[1] || '' : ''}</div>
+        <div class="item-arrow">▼</div>
+      </div>
+      <div class="item-body">
+        <div class="text-content">${escHtml(item.text)}</div>
+        <button class="copy-btn" onclick="copyText(this, ${JSON.stringify(item.text).replace(/</g,'\\u003c')})">
+          📋 複製文案
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleCard(i) {
+  document.getElementById(`card-${i}`).classList.toggle('open');
+}
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✅ 已複製！';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.innerHTML = '📋 複製文案';
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+}
+
+// ── Settings ──
+function openSettings() {
+  document.getElementById('apiUrl').value = localStorage.getItem('bot_api_url') || '';
+  document.getElementById('modalBg').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('modalBg').classList.remove('open');
+}
+function closeSettingsOutside(e) {
+  if (e.target === document.getElementById('modalBg')) closeSettings();
+}
+function saveSettings() {
+  const url = document.getElementById('apiUrl').value.trim().replace(/\/$/, '');
+  if (url) localStorage.setItem('bot_api_url', url);
+  closeSettings();
+  loadData();
+}
+
+function setStatus(state) {
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot' + (state ? ' ' + state : '');
+}
+
+function showError(msg) {
+  document.getElementById('listArea').innerHTML = `
+    <div class="center-msg">
+      <div class="icon">⚠️</div>
+      <p>讀取失敗：${escHtml(msg)}</p>
+      <p style="margin-top:8px;font-size:12px;">請確認 Render 服務是否正常，或點右上角 ⚙ 確認 API 網址</p>
+    </div>`;
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>
