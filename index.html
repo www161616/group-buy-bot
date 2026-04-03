@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>開團助手 — 包子媽生鮮小舖</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
 :root{--bg:#f5f3ee;--surface:#fff;--border:#ddd9d0;--text:#2a2520;--text-muted:#7a7060;--accent:#c0392b;--accent-light:#fdf0ef;--green:#27ae60;--green-light:#edf7f1;--yellow:#e67e22;--yellow-light:#fef6ec;--blue:#2980b9;--tag-bg:#eceae4;--mono:'JetBrains Mono',monospace;--sans:'Noto Sans TC',sans-serif}
@@ -122,7 +121,8 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
   </div>
 </div>
 <script>
-var productDB = [];
+var SUPABASE_URL = 'https://asugjynpocwygggttxyo.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_cG0dslg6JnSwOtPSBko2Eg_VB0NtbTW';
 var calendarItems = [];
 var matchResults = [];
 var currentFilter = 'all';
@@ -138,7 +138,7 @@ window.addEventListener('DOMContentLoaded', function() {
   var zone = document.getElementById('uploadZone');
   zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag'); });
   zone.addEventListener('dragleave', function() { zone.classList.remove('drag'); });
-  zone.addEventListener('drop', function(e) { e.preventDefault(); zone.classList.remove('drag'); if (e.dataTransfer.files[0]) loadExcelFile(e.dataTransfer.files[0]); });
+  zone.addEventListener('drop', function(e) { e.preventDefault(); zone.classList.remove('drag'); });
   fetchBotItems();
 });
 
@@ -223,35 +223,37 @@ function findBotItem(calName) {
   return bestScore >= 0.7 ? best : null;
 }
 
-function loadExcel(input) { if (input.files[0]) loadExcelFile(input.files[0]); }
-function loadExcelFile(file) {
-  var status = document.getElementById('excelStatus');
-  var dot = document.getElementById('excelDot');
-  status.textContent = '讀取中…';
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      var wb = XLSX.read(e.target.result, { type: 'array' });
-      var ws = wb.Sheets[wb.SheetNames[0]];
-      var rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      productDB = rows.map(function(row) {
-        var styles = [];
-        for (var i = 1; i <= 20; i++) {
-          var n = row['款式' + i + '_名稱'] || '';
-          var p = row['款式' + i + '_售價'] || '';
-          var c = row['款式' + i + '_成本'] || '';
-          if (n) styles.push({ name: String(n).trim(), price: p, cost: c });
-        }
-        return { id: row['商品ID'] || '', title: String(row['商品名稱'] || '').trim(), priceMin: row['售價(最低)'] || '', priceMax: row['售價(最高)'] || '', imgUrl: row['圖片連結'] || '', feedId: row['商品編號(feedid)'] || '', styles: styles };
-      }).filter(function(p) { return p.title; });
-      dot.className = 'dot green';
-      status.innerHTML = '<span class="badge badge-green">✓ 載入完成</span> 共 <strong>' + productDB.length + '</strong> 筆商品';
-    } catch(err) {
-      dot.className = 'dot red';
-      status.innerHTML = '<span style="color:var(--accent)">✗ ' + esc(err.message) + '</span>';
+async function searchSupabase(keyword) {
+  // 用商品名稱關鍵字查 Supabase
+  var clean = keyword.replace(/[^一-鿿a-zA-Z0-9]/g, '').slice(0, 6);
+  if (!clean) return null;
+  var url = SUPABASE_URL + '/rest/v1/gb_lele_products?title=ilike.*' + encodeURIComponent(clean) + '*&select=id,title,price_min,price_max,img_url,feed_id,styles&limit=5';
+  var res = await fetch(url, {
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY
     }
+  });
+  var rows = await res.json();
+  if (!rows || !rows.length) return null;
+  // 找最相似的
+  var best = null, bestScore = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var s = similarity(keyword, rows[i].title);
+    if (s > bestScore) { bestScore = s; best = rows[i]; }
+  }
+  if (bestScore < 0.35) return null;
+  // 轉換格式
+  return {
+    id: best.id,
+    title: best.title,
+    priceMin: best.price_min,
+    priceMax: best.price_max,
+    imgUrl: best.img_url,
+    feedId: best.feed_id,
+    styles: (best.styles || []).map(function(s) { return { name: s.name, price: s.price, cost: s.cost }; }),
+    score: bestScore
   };
-  reader.readAsArrayBuffer(file);
 }
 
 function fetchCalendar() {
@@ -311,20 +313,22 @@ function similarity(a, b) {
   var common = 0; setA.forEach(function(c) { if (setB.has(c)) common++; });
   return Math.max(maxLen / shorter.length * 0.8, (2 * common) / (setA.size + setB.size) * 0.5);
 }
-function findBestMatch(calName) {
-  if (!productDB.length) return null;
-  var best = null, bestScore = 0;
-  for (var i = 0; i < productDB.length; i++) {
-    var s = similarity(calName, productDB[i].title);
-    if (s > bestScore) { bestScore = s; best = productDB[i]; }
+// findBestMatch replaced by searchSupabase
+async function runMatch() {
+  setLog('比對商品庫中… 0 / ' + calendarItems.length);
+  matchResults = [];
+  for (var i = 0; i < calendarItems.length; i++) {
+    var item = calendarItems[i];
+    var result = await searchSupabase(item.name);
+    matchResults.push({
+      calItem: item,
+      match: result || null,
+      score: result ? result.score : 0,
+      isNew: !result
+    });
+    setLog('比對商品庫中… ' + (i+1) + ' / ' + calendarItems.length);
   }
-  return bestScore >= 0.35 ? { product: best, score: bestScore } : null;
-}
-function runMatch() {
-  matchResults = calendarItems.map(function(item) {
-    var m = findBestMatch(item.name);
-    return { calItem: item, match: m ? m.product : null, score: m ? m.score : 0, isNew: !m };
-  });
+  setLog('✓ 比對完成');
   renderResults();
 }
 
