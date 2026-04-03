@@ -21,7 +21,12 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
 .dot.green{background:var(--green)}.dot.red{background:var(--accent)}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s}
 .btn-green{background:var(--green);color:white}.btn-green:hover{background:#219a52}
+.btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border)}.btn-secondary:hover{background:var(--tag-bg)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
+.emoji-bar{display:none;flex-wrap:wrap;gap:2px;margin-bottom:6px}
+.emoji-bar.show{display:flex}
+.emoji-btn{background:none;border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-size:16px;cursor:pointer;line-height:1.2}
+.emoji-btn:hover{background:var(--tag-bg)}
 .upload-zone{border:2px dashed var(--border);border-radius:6px;padding:24px;text-align:center;cursor:pointer;transition:all .2s;position:relative}
 .upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:var(--accent-light)}
 .upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
@@ -103,8 +108,6 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
 var SUPABASE_URL = 'https://asugjynpocwygggttxyo.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_cG0dslg6JnSwOtPSBko2Eg_VB0NtbTW';
 var GCAL_API_KEY = 'AIzaSyCMTlpH-m6jeOGy0_qjnpP9GaFlqSzedZM';
-var GCAL_CAL_ID = 'j5pqf76fhd0all9mf25oddokc0@group.calendar.google.com';
-var GCAL_API_KEY = localStorage.getItem('gcal_api_key') || '';
 var GCAL_CAL_ID = 'j5pqf76fhd0all9mf25oddokc0@group.calendar.google.com';
 var calendarItems = [];
 var matchResults = [];
@@ -387,34 +390,55 @@ function renderNewBody(calItem, idx) {
   return '<div class="new-marker">🆕 此商品在樂樂資料庫中找不到對應商品，可能是新品或名稱差異太大。</div>' + renderBotBlock(calItem, idx);
 }
 
+var EMOJI_LIST = ['❤️','🚩','✨','🎉','👍','🔔','😘','🥰','🎀','👉','🫰','🎈','🎁','🛒','💎','💋','📞','📍','📌','⏰','🌈','⚡','🔥','💥','🚫','❓','❗','‼️','⁉️','💯'];
+
 function renderBotBlock(calItem, idx) {
   var botItem = findBotItem(calItem.name);
   if (!botItem) return '';
   var cleaned = cleanText(botItem.text);
   botTextMap[idx] = cleaned;
+  var emojiButtons = EMOJI_LIST.map(function(e) {
+    return '<button class="emoji-btn" onclick="insertEmoji(' + idx + ',\'' + e + '\')">' + e + '</button>';
+  }).join('');
   return '<div class="bot-block">' +
     '<div class="bot-block-title">📱 供應商文案</div>' +
     '<div style="display:flex;gap:6px;margin-bottom:8px;">' +
     '<button class="copy-btn-sm" id="bot-copy-' + idx + '">複製文案</button>' +
     '<button class="copy-btn-sm" onclick="toggleEdit(' + idx + ')">✏️ 編輯</button>' +
     '</div>' +
+    '<div class="emoji-bar" id="emoji-bar-' + idx + '">' + emojiButtons + '</div>' +
     '<textarea id="bot-ta-' + idx + '" readonly style="width:100%;min-height:180px;font-family:var(--sans);font-size:13px;line-height:1.7;border:1px solid #c8e0f8;border-radius:4px;padding:8px;background:white;resize:vertical;">' +
     esc(cleaned) + '</textarea></div>';
 }
 
 function toggleEdit(idx) {
   var ta = document.getElementById('bot-ta-' + idx);
+  var bar = document.getElementById('emoji-bar-' + idx);
   if (!ta) return;
   var isReadonly = ta.hasAttribute('readonly') || ta.readOnly;
   if (isReadonly) {
     ta.removeAttribute('readonly');
     ta.style.background = '#fffbe6';
+    if (bar) bar.classList.add('show');
     ta.focus();
   } else {
     ta.readOnly = true;
     ta.style.background = 'white';
+    if (bar) bar.classList.remove('show');
     botTextMap[idx] = ta.value;
   }
+}
+
+function insertEmoji(idx, emoji) {
+  var ta = document.getElementById('bot-ta-' + idx);
+  if (!ta || ta.readOnly) return;
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var val = ta.value;
+  ta.value = val.slice(0, start) + emoji + val.slice(end);
+  var pos = start + emoji.length;
+  ta.selectionStart = ta.selectionEnd = pos;
+  ta.focus();
+  botTextMap[idx] = ta.value;
 }
 
 function toggleItem(idx) { document.getElementById('item-' + idx).classList.toggle('open'); }
