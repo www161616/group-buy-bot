@@ -80,32 +80,11 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
   <div class="header-status" id="headerStatus">就緒</div>
 </header>
 <div class="container">
-  <div class="setup-grid">
-    <div class="card">
-      <div class="card-title"><div class="dot" id="excelDot"></div>步驟 1 — 商品資料庫</div>
-      <div class="upload-zone" id="uploadZone">
-        <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="loadExcel(this)">
-        <div class="upload-icon">📊</div>
-        <div class="upload-label">拖曳或點擊上傳<br><strong>樂樂商品匯出_含款式.xlsx</strong></div>
-      </div>
-      <div id="excelStatus" style="margin-top:10px;font-size:12px;color:var(--text-muted);"></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><div class="dot" id="calDot"></div>步驟 2 — 讀取 Google 日曆</div>
-      <div class="auth-info">需要 Google Calendar API 金鑰。<br>若還沒有，請到 <code>console.cloud.google.com</code> 建立。</div>
-      <div class="input-row">
-        <input class="input-field" id="apiKey" type="password" placeholder="Google API Key (AIza...)" oninput="saveApiKey()">
-      </div>
-      <div class="input-row">
-        <input class="input-field" id="calId" type="text" placeholder="日曆 ID（預設：primary）" oninput="saveCalId()">
-        <input class="date-input" id="targetDate" type="date">
-      </div>
-      <div id="log"></div>
-      <div style="margin-top:12px;">
-        <button class="btn btn-green" onclick="fetchCalendar()" id="fetchBtn">📅 讀取今日商品</button>
-        <button class="btn btn-secondary" onclick="refreshBotItems()" id="refreshBotBtn" style="margin-top:8px;">🔄 重新整理文案</button>
-      </div>
-    </div>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
+    <input class="date-input" id="targetDate" type="date" style="font-size:15px;padding:10px 14px;">
+    <button class="btn btn-green" onclick="fetchCalendar()" id="fetchBtn" style="font-size:14px;padding:10px 20px;">📅 讀取今日商品</button>
+    <button class="btn btn-secondary" onclick="refreshBotItems()" id="refreshBotBtn" style="font-size:14px;padding:10px 20px;">🔄 重新整理文案</button>
+    <span id="log" style="font-size:12px;color:var(--text-muted);font-family:var(--mono);"></span>
   </div>
   <div id="resultsArea" style="display:none;">
     <div class="stats-row" id="statsRow"></div>
@@ -123,6 +102,10 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
 <script>
 var SUPABASE_URL = 'https://asugjynpocwygggttxyo.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_cG0dslg6JnSwOtPSBko2Eg_VB0NtbTW';
+var GCAL_API_KEY = 'AIzaSyCMTlpH-m6jeOGy0_qjnpP9GaFlqSzedZM';
+var GCAL_CAL_ID = 'j5pqf76fhd0all9mf25oddokc0@group.calendar.google.com';
+var GCAL_API_KEY = localStorage.getItem('gcal_api_key') || '';
+var GCAL_CAL_ID = 'j5pqf76fhd0all9mf25oddokc0@group.calendar.google.com';
 var calendarItems = [];
 var matchResults = [];
 var currentFilter = 'all';
@@ -130,10 +113,6 @@ var botItems = [];
 var botTextMap = {};  // idx -> text
 
 window.addEventListener('DOMContentLoaded', function() {
-  var savedKey = localStorage.getItem('gcal_api_key');
-  var savedCal = localStorage.getItem('gcal_cal_id');
-  if (savedKey) document.getElementById('apiKey').value = savedKey;
-  if (savedCal) document.getElementById('calId').value = savedCal;
   document.getElementById('targetDate').value = new Date().toISOString().split('T')[0];
   var zone = document.getElementById('uploadZone');
   zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag'); });
@@ -142,8 +121,7 @@ window.addEventListener('DOMContentLoaded', function() {
   fetchBotItems();
 });
 
-function saveApiKey() { localStorage.setItem('gcal_api_key', document.getElementById('apiKey').value); }
-function saveCalId() { localStorage.setItem('gcal_cal_id', document.getElementById('calId').value); }
+
 
 function refreshBotItems() {
   var btn = document.getElementById('refreshBotBtn');
@@ -224,10 +202,11 @@ function findBotItem(calName) {
 }
 
 async function searchSupabase(keyword) {
-  // 用商品名稱關鍵字查 Supabase
-  var clean = keyword.replace(/[^一-鿿a-zA-Z0-9]/g, '').slice(0, 6);
-  if (!clean) return null;
-  var url = SUPABASE_URL + '/rest/v1/gb_lele_products?title=ilike.*' + encodeURIComponent(clean) + '*&select=id,title,price_min,price_max,img_url,feed_id,styles&limit=5';
+  // 取前3個中文字做查詢，範圍寬一點
+  var cjk = keyword.replace(/[^一-鿿]/g, '');
+  var query = cjk.slice(0, 3) || keyword.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4);
+  if (!query) return null;
+  var url = SUPABASE_URL + '/rest/v1/gb_lele_products?title=ilike.*' + encodeURIComponent(query) + '*&select=id,title,price_min,price_max,img_url,feed_id,styles&limit=10';
   var res = await fetch(url, {
     headers: {
       'apikey': SUPABASE_KEY,
@@ -257,10 +236,10 @@ async function searchSupabase(keyword) {
 }
 
 function fetchCalendar() {
-  var apiKey = document.getElementById('apiKey').value.trim();
-  var calId = document.getElementById('calId').value.trim() || 'primary';
+  var apiKey = GCAL_API_KEY;
+  var calId = GCAL_CAL_ID;
   var dateStr = document.getElementById('targetDate').value;
-  if (!apiKey) { setLog('⚠ 請輸入 Google API Key'); return; }
+  if (!apiKey) { setLog('⚠ API Key 未設定，請聯絡管理員'); return; }
   if (!dateStr) { setLog('⚠ 請選擇日期'); return; }
   var btn = document.getElementById('fetchBtn');
   btn.disabled = true;
