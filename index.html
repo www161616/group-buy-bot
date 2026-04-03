@@ -178,8 +178,8 @@ function cleanText(text) {
   text = text.replace(/(\(\d+\))+/g, function(m) {
     return m.replace(/\((\d+)\)/g, '$1');
   });
-  // 其他 (xxx) → 刪掉（剩餘未處理的）
-  text = text.replace(/\([^)]{1,10}\)/g, '');
+  // (單一字母) → 該字母，大小寫都保留
+  text = text.replace(/\(([a-zA-Z])\)/g, '$1');
   // 「到貨通知」下一行加「結單」
   var lines = text.split(String.fromCharCode(10));
   for (var _i = 0; _i < lines.length - 1; _i++) {
