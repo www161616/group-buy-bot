@@ -114,10 +114,7 @@ var botTextMap = {};  // idx -> text
 
 window.addEventListener('DOMContentLoaded', function() {
   document.getElementById('targetDate').value = new Date().toISOString().split('T')[0];
-  var zone = document.getElementById('uploadZone');
-  zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag'); });
-  zone.addEventListener('dragleave', function() { zone.classList.remove('drag'); });
-  zone.addEventListener('drop', function(e) { e.preventDefault(); zone.classList.remove('drag'); });
+
   fetchBotItems();
 });
 
@@ -245,7 +242,7 @@ function fetchCalendar() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> 讀取中…';
   setLog('連線中…');
-  document.getElementById('calDot').className = 'dot';
+
   var dayStart = new Date(dateStr + 'T00:00:00+08:00').toISOString();
   var dayEnd = new Date(dateStr + 'T23:59:59+08:00').toISOString();
   var url = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events'
@@ -260,12 +257,12 @@ function fetchCalendar() {
         if (start) { try { t = new Date(start).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Taipei' }); } catch(e) {} }
         return { name: ev.summary || '', time: t };
       }).filter(function(ev) { return ev.name; });
-      document.getElementById('calDot').className = 'dot green';
+
       setLog('✓ 讀取到 ' + calendarItems.length + ' 個事件');
       if (!calendarItems.length) showEmpty(); else runMatch();
     })
     .catch(function(err) {
-      document.getElementById('calDot').className = 'dot red';
+  
       setLog('✗ ' + err.message);
     })
     .finally(function() { btn.disabled = false; btn.innerHTML = '📅 讀取今日商品'; });
