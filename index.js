@@ -1,8 +1,10 @@
 const express = require('express');
 const line = require('@line/bot-sdk');
 const { google } = require('googleapis');
+const cors = require('cors');
 
 const app = express();
+app.use(cors());
 
 // LINE SDK config
 const lineConfig = {
