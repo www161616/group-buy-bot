@@ -688,41 +688,40 @@ function openModal(idx, isNew) {
 
   document.getElementById('modalTitle').textContent = isNew ? '\ud83c\udd95 \u65b0\u54c1\u4e0a\u67b6' : '\u2705 \u6574\u7406\u4e0a\u67b6';
 
-  // 1. 清理商品名稱
-  var cleanedName = cleanCalName(calItem.name);
-  document.getElementById('mName').value = cleanedName;
-
-  // 2. 用 parseOne 解析原始 bot 文案（如果有的話）
+  // 用 parseOne 解析原始 bot 文案
   var parsed = rawBotText ? parseOne(rawBotText) : null;
 
-  // 3. 售價：優先 match > 日曆名稱解析 > 文案解析
+  // 1. 商品名稱：優先文案解析 > 日曆名稱清理
+  var cleanedName = cleanCalName(calItem.name);
+  document.getElementById('mName').value = (parsed && parsed.name) ? parsed.name : cleanedName;
+
+  // 2. 售價：優先文案解析 > match > 日曆名稱解析
   var price = '';
-  if (match && match.priceMin) price = match.priceMin;
+  if (parsed && parsed.price) price = parsed.price;
+  if (!price && match && match.priceMin) price = match.priceMin;
   if (!price) price = parsePriceFromText(calItem.name);
-  if (!price && parsed) price = parsed.price;
-  if (!price) price = parsePriceFromText(botText);
   document.getElementById('mPrice').value = price;
 
-  // 4. 結單日：優先日曆名稱 > 文案解析
-  var closeDate = parseCloseDateFromText(calItem.name);
-  if (!closeDate && parsed) closeDate = parsed.date;
-  if (!closeDate) closeDate = parseCloseDateFromText(botText);
+  // 3. 結單日：優先文案解析 > 日曆名稱解析
+  var closeDate = '';
+  if (parsed && parsed.date) closeDate = parsed.date;
+  if (!closeDate) closeDate = parseCloseDateFromText(calItem.name);
   document.getElementById('mCloseDate').value = closeDate;
 
-  // 5. 款式：優先 match > 文案解析
+  // 4. 款式：優先文案解析 > match
   var tbody = document.getElementById('mStylesBody');
   tbody.innerHTML = '';
-  if (match && match.styles && match.styles.length) {
-    match.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
-  } else if (parsed && parsed.subs && parsed.subs.length) {
+  if (parsed && parsed.subs && parsed.subs.length) {
     parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
+  } else if (match && match.styles && match.styles.length) {
+    match.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
   }
 
-  // 6. 商品描述：優先歷史文案 textarea > bot 文案 > parsed.desc
+  // 5. 商品描述：優先歷史文案 > parsed.desc > 清理後文案
   var histTa = document.getElementById('hist-ta-' + idx);
   var descText = histTa ? histTa.value : '';
-  if (!descText) descText = botText;
   if (!descText && parsed) descText = parsed.desc || '';
+  if (!descText) descText = botText;
   document.getElementById('mDesc').value = descText;
 
   document.getElementById('modalOverlay').classList.add('show');
