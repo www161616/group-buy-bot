@@ -161,7 +161,7 @@ body{padding-bottom:52px}
     <input id="mName" type="text">
     <label>售價</label>
     <input id="mPrice" type="number">
-    <label>結單日（M/D）</label>
+    <label>結單日（M/D）<span style="color:var(--accent);font-weight:500;font-size:11px;margin-left:6px;">請確定結單日是否正確</span></label>
     <input id="mCloseDate" type="text" placeholder="例：4/10">
     <div id="mTempRow" style="display:none;">
       <label>溫度</label>
@@ -450,9 +450,9 @@ function updateMNameFields() {
     rebuildNewMName();
     return;
   }
-  // 舊商品：直接替換 mName 裡的 💰數字 和 ⏰日期結單
+  // 舊商品：直接替換 mName 裡的 💰數字 和 ⏰...結單
   val = val.replace(/\ud83d\udcb0\d*/, '\ud83d\udcb0' + newPrice);
-  val = val.replace(/\u23f0\d{1,2}\/\d{1,2}\u7d50\u55ae/, '\u23f0' + newDate + '\u7d50\u55ae');
+  val = val.replace(/\u23f0[^\u7d50]*\u7d50\u55ae/, '\u23f0' + newDate + '\u7d50\u55ae');
   mName.value = val;
 }
 
@@ -1111,7 +1111,7 @@ function exportXLS() {
         var cd = parseInt(parts[1], 10);
         var orderMonth = parseInt(dateStr.slice(5,7), 10);
         if (cm < orderMonth) year++;
-        closeTimeStr = year + '/' + cm + '/' + cd + '  11:59:00 PM';
+        closeTimeStr = year + '/' + cm + '/' + cd + ' 23:59';
       }
     }
 
