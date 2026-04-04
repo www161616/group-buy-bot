@@ -692,7 +692,7 @@ function renderMatchBody(r, idx) {
       '<textarea id="hist-ta-' + idx + '" style="width:100%;min-height:120px;font-family:var(--sans);font-size:13px;line-height:1.7;border:1px solid #c0c0e8;border-radius:4px;padding:8px;background:white;resize:vertical;">' +
       esc(match.description) + '</textarea></div>';
   }
-  var addBtn = '<div style="margin-top:12px;"><button class="btn btn-green" onclick="openModal(' + idx + ',false)" style="font-size:13px;">\u2705 \u6574\u7406\u4e0a\u67b6</button></div>';
+  var addBtn = '<div style="margin-top:12px;display:flex;align-items:center;gap:10px;"><button class="btn btn-green" onclick="openModal(' + idx + ',false)" style="font-size:13px;">\u2705 \u6574\u7406\u4e0a\u67b6</button><span style="color:var(--accent);font-size:12px;font-weight:700;">\u8acb\u4fee\u6539\u7d50\u55ae\u65e5</span></div>';
   return img +
     '<div class="match-lele-title">\ud83d\uddc2 ' + esc(match.title) + '</div>' +
     '<div class="match-grid"><div class="match-key">\u552e\u50f9</div><div class="match-val">' + (match.priceMin ? '$' + match.priceMin + (match.priceMax ? ' ~ $' + match.priceMax : '') : '\u2014') + '</div>' +
@@ -704,7 +704,7 @@ function renderMatchBody(r, idx) {
 
 function renderNewBody(r, idx) {
   var botHtml = renderBotBlock(r.calItem, idx);
-  var addBtn = '<div style="margin-top:12px;"><button class="btn btn-yellow" onclick="openModal(' + idx + ',true)" style="font-size:13px;">\ud83c\udd95 \u6574\u7406\u4e0a\u67b6</button></div>';
+  var addBtn = '<div style="margin-top:12px;display:flex;align-items:center;gap:10px;"><button class="btn btn-yellow" onclick="openModal(' + idx + ',true)" style="font-size:13px;">\ud83c\udd95 \u6574\u7406\u4e0a\u67b6</button><span style="color:var(--accent);font-size:12px;font-weight:700;">\u8acb\u4fee\u6539\u7d50\u55ae\u65e5</span></div>';
   return '<div class="new-marker">\ud83c\udd95 \u6b64\u5546\u54c1\u5728\u6a02\u6a02\u8cc7\u6599\u5eab\u4e2d\u627e\u4e0d\u5230\u5c0d\u61c9\u5546\u54c1\uff0c\u53ef\u80fd\u662f\u65b0\u54c1\u6216\u540d\u7a31\u5dee\u7570\u592a\u5927\u3002</div>' + botHtml + addBtn;
 }
 
