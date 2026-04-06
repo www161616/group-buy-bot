@@ -111,6 +111,23 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
 .bb-table .bb-edit{color:var(--blue);cursor:pointer;text-decoration:underline}
 .bb-table .bb-del{color:var(--accent);cursor:pointer;border:none;background:none;font-size:15px;padding:2px 6px}
 body{padding-bottom:52px}
+/* Split layout */
+.split-layout{display:flex;gap:16px;min-height:60vh}
+.left-panel{width:260px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow-y:auto;max-height:calc(100vh - 180px);position:sticky;top:68px}
+.right-panel{flex:1;min-width:0}
+.list-item{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;transition:background .1s}
+.list-item:last-child{border-bottom:none}
+.list-item:hover{background:var(--tag-bg)}
+.list-item.active{background:var(--accent-light);border-left:3px solid var(--accent)}
+.list-item.in-batch{background:var(--green-light)}
+.list-item.in-batch .list-name::after{content:' \u2705';font-size:10px;margin-left:4px}
+.list-seq{font-family:var(--mono);font-size:12px;color:var(--text-muted);min-width:24px}
+.list-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.list-badge{flex-shrink:0}
+.right-detail{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px}
+.right-detail-header{font-size:15px;font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.right-empty{text-align:center;padding:80px 20px;color:var(--text-muted)}
+.right-empty .icon{font-size:48px;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -132,7 +149,10 @@ body{padding-bottom:52px}
       <div class="tab" onclick="filterResults('matched',this)">✅ 已比對</div>
       <div class="tab" onclick="filterResults('new',this)">🆕 新品</div>
     </div>
-    <div id="resultsList"></div>
+    <div class="split-layout">
+      <div class="left-panel" id="leftPanel"></div>
+      <div class="right-panel" id="rightPanel"><div class="right-empty"><div class="icon">\ud83d\udc48</div><p>\u9ede\u64ca\u5de6\u5074\u5546\u54c1\u67e5\u770b\u8a73\u60c5</p></div></div>
+    </div>
   </div>
   <div id="emptyState" class="empty-state" style="display:none;">
     <div class="icon">📋</div><p>今日日曆沒有商品事件</p>
@@ -149,6 +169,7 @@ body{padding-bottom:52px}
   <div class="batch-bar-body" id="batchBody"></div>
   <div class="batch-bar-actions">
     <button class="btn btn-blue" onclick="exportXLS()" style="font-size:13px;">📥 匯出 XLS</button>
+    <button class="btn btn-green" onclick="exportForERP()" style="font-size:13px;">📤 匯出 ERP 匯入檔</button>
     <button class="btn btn-accent" onclick="clearBatch()" style="font-size:13px;">🗑️ 清除全部</button>
   </div>
 </div>
@@ -195,6 +216,7 @@ var botItems = [];
 var botTextMap = {};
 var batchList = [];
 var modalCtx = null; // 目前 modal 對應的資料
+var selectedIdx = 0;
 
 var EMOJI_LIST = ['\u2764\ufe0f','\ud83d\udea9','\u2728','\ud83c\udf89','\ud83d\udc4d','\ud83d\udd14','\ud83d\ude18','\ud83e\udd70','\ud83c\udf80','\ud83d\udc49','\ud83e\udee0','\ud83c\udf88','\ud83c\udf81','\ud83d\uded2','\ud83d\udc8e','\ud83d\udc8b','\ud83d\udcde','\ud83d\udccd','\ud83d\udccc','\u23f0','\ud83c\udf08','\u26a1','\ud83d\udd25','\ud83d\udca5','\ud83d\udeab','\u2753','\u2757','\u203c\ufe0f','\u2049\ufe0f','\ud83d\udcaf'];
 
@@ -305,7 +327,16 @@ function parseBotText(rawText) {
     if (subMatch) {
       // 清理款式名稱裡的括號格式
       var subName = expandParenChars(subMatch[2].trim());
-      subs.push({ letter: subMatch[1].toUpperCase(), name: '(' + subMatch[1].toUpperCase() + ')' + subName });
+      // 款式行本身可能有 $數字
+      var subPriceMatch = subName.match(/\$(\d+)/);
+      var subPrice = subPriceMatch ? subPriceMatch[1] : '';
+      // 如果本行沒價格，往下一行找 $數字
+      if (!subPrice) {
+        var nextLine = (cleanLines[i + 1] || '').trim();
+        var nextPm = nextLine.match(/\$(\d+)/);
+        if (nextPm) subPrice = nextPm[1];
+      }
+      subs.push({ letter: subMatch[1].toUpperCase(), name: '(' + subMatch[1].toUpperCase() + ')' + subName, price: subPrice });
       continue;
     }
   }
@@ -614,47 +645,87 @@ function renderResults() {
 
 function filterResults(type, el) {
   currentFilter = type;
+  selectedIdx = 0;
   document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
   el.classList.add('active');
   renderFiltered();
 }
 
 function renderFiltered() {
-  var list = document.getElementById('resultsList');
+  var left = document.getElementById('leftPanel');
+  var right = document.getElementById('rightPanel');
   var items = matchResults;
   if (currentFilter === 'matched') items = matchResults.filter(function(r) { return !r.isNew; });
   if (currentFilter === 'new') items = matchResults.filter(function(r) { return r.isNew; });
-  if (!items.length) { list.innerHTML = '<div class="empty-state"><div class="icon">\ud83d\udd0d</div><p>\u6b64\u5206\u985e\u6c92\u6709\u9805\u76ee</p></div>'; return; }
+  if (!items.length) {
+    left.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">\u6b64\u5206\u985e\u6c92\u6709\u9805\u76ee</div>';
+    right.innerHTML = '';
+    return;
+  }
   botTextMap = {};
-  list.innerHTML = items.map(function(r, i) {
-    // 取得該項目在 matchResults 裡的全局序號（1-based）
-    var globalIdx = matchResults.indexOf(r) + 1;
-    return renderItem(r, i, globalIdx);
-  }).join('');
+  var html = '';
   items.forEach(function(r, i) {
-    var btn = document.getElementById('bot-copy-' + i);
-    if (btn) {
-      btn.addEventListener('click', function() {
-        var ta = document.getElementById('bot-ta-' + i);
-        var text = ta ? ta.value : (botTextMap[i] || '');
-        navigator.clipboard.writeText(text).then(function() {
-          btn.textContent = '\u5df2\u8907\u88fd \u2713'; btn.classList.add('copied');
-          setTimeout(function() { btn.textContent = '\u8907\u88fd\u6587\u6848'; btn.classList.remove('copied'); }, 2000);
-        });
-      });
-    }
-    var hbtn = document.getElementById('hist-copy-' + i);
-    if (hbtn) {
-      hbtn.addEventListener('click', function() {
-        var hta = document.getElementById('hist-ta-' + i);
-        if (!hta) return;
-        navigator.clipboard.writeText(hta.value).then(function() {
-          hbtn.textContent = '\u5df2\u8907\u88fd \u2713'; hbtn.classList.add('copied');
-          setTimeout(function() { hbtn.textContent = '\u8907\u88fd'; hbtn.classList.remove('copied'); }, 2000);
-        });
-      });
-    }
+    var globalIdx = matchResults.indexOf(r) + 1;
+    var shortName = cleanCalName(r.calItem.name) || r.calItem.name;
+    var badge = r.isNew
+      ? '<span class="badge badge-yellow" style="font-size:10px;padding:1px 6px;">\ud83c\udd95</span>'
+      : '<span class="badge badge-green" style="font-size:10px;padding:1px 6px;">\u2705</span>';
+    html += '<div class="list-item" id="list-' + i + '" onclick="selectItem(' + i + ')" data-calname="' + esc(r.calItem.name) + '">' +
+      '<span class="list-seq">' + globalIdx + '</span>' +
+      '<span class="list-name" title="' + esc(r.calItem.name) + '">' + esc(shortName) + '</span>' +
+      '<span class="list-badge">' + badge + '</span></div>';
   });
+  left.innerHTML = html;
+  if (selectedIdx >= items.length) selectedIdx = 0;
+  selectItem(selectedIdx);
+  markBatchItems();
+}
+
+function selectItem(idx) {
+  selectedIdx = idx;
+  document.querySelectorAll('.list-item').forEach(function(el) { el.classList.remove('active'); });
+  var activeEl = document.getElementById('list-' + idx);
+  if (activeEl) {
+    activeEl.classList.add('active');
+    activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  var items = getFilteredItems();
+  var r = items[idx];
+  if (!r) return;
+  var right = document.getElementById('rightPanel');
+  var globalIdx = matchResults.indexOf(r) + 1;
+  var badge = r.isNew
+    ? '<span class="badge badge-yellow">\ud83c\udd95 \u65b0\u54c1</span>'
+    : '<span class="badge badge-green">\u2705 \u5df2\u6bd4\u5c0d ' + Math.round(r.score * 100) + '%</span>';
+  var body = r.isNew ? renderNewBody(r, idx) : renderMatchBody(r, idx);
+  right.innerHTML = '<div class="right-detail">' +
+    '<div class="right-detail-header">' +
+    '<span style="font-family:var(--mono);font-size:13px;color:var(--text-muted);">' + globalIdx + '.</span>' +
+    '<span style="flex:1;">' + esc(r.calItem.name) + '</span>' +
+    badge + '</div>' + body + '</div>';
+  // Set up copy button listeners
+  var btn = document.getElementById('bot-copy-' + idx);
+  if (btn) {
+    btn.addEventListener('click', function() {
+      var ta = document.getElementById('bot-ta-' + idx);
+      var text = ta ? ta.value : (botTextMap[idx] || '');
+      navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = '\u5df2\u8907\u88fd \u2713'; btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = '\u8907\u88fd\u6587\u6848'; btn.classList.remove('copied'); }, 2000);
+      });
+    });
+  }
+  var hbtn = document.getElementById('hist-copy-' + idx);
+  if (hbtn) {
+    hbtn.addEventListener('click', function() {
+      var hta = document.getElementById('hist-ta-' + idx);
+      if (!hta) return;
+      navigator.clipboard.writeText(hta.value).then(function() {
+        hbtn.textContent = '\u5df2\u8907\u88fd \u2713'; hbtn.classList.add('copied');
+        setTimeout(function() { hbtn.textContent = '\u8907\u88fd'; hbtn.classList.remove('copied'); }, 2000);
+      });
+    });
+  }
 }
 
 function renderItem(r, idx, seq) {
@@ -793,17 +864,32 @@ function openModal(idx, isNew) {
   tbody.innerHTML = '';
 
   if (!isNew && match) {
-    // ── 舊商品：直接用 Supabase 的資料 ──
+    // ── 舊商品：Supabase 資料為底，供應商文案的新價格覆蓋 ──
+    var botParsed = parseBotText(rawBotText);
     // 商品名稱 = Supabase 的 title（已含 ⬜💰⏰#編號#）
     document.getElementById('mName').value = match.title || '';
-    // 售價
-    document.getElementById('mPrice').value = match.priceMin || '';
-    // 結單日：從 title 解析
-    var cd = parseCloseDateFromText(match.title || '');
+    // 售價：供應商文案優先，沒有才用 Supabase 舊價
+    document.getElementById('mPrice').value = botParsed.price || match.priceMin || '';
+    // 結單日：供應商文案優先，沒有才從 title 解析
+    var cd = botParsed.date || parseCloseDateFromText(match.title || '');
     document.getElementById('mCloseDate').value = cd;
-    // 款式：直接用 Supabase 的 styles（name 裡已含 #編號#）
+    // 款式：名稱用 Supabase（含 #編號#），價格用供應商文案的新價覆蓋
     if (match.styles && match.styles.length) {
-      match.styles.forEach(function(s) { addModalStyleRow(s.name, s.price); });
+      // 建立字母→新價格的對照表
+      var botPriceMap = {};
+      if (botParsed.subs && botParsed.subs.length) {
+        botParsed.subs.forEach(function(bs) { if (bs.price) botPriceMap[bs.letter] = bs.price; });
+      }
+      match.styles.forEach(function(s) {
+        var stylePrice = s.price;
+        // 從款式名稱提取字母，例如 "(a) 原味#140318014#" → "A"
+        var letterMatch = (s.name || '').match(/^\(?([A-Za-z])\)/);
+        if (letterMatch) {
+          var letter = letterMatch[1].toUpperCase();
+          if (botPriceMap[letter]) stylePrice = botPriceMap[letter];
+        }
+        addModalStyleRow(s.name, stylePrice);
+      });
     }
     // 描述：優先歷史文案 > Bot 文案
     var histTa = document.getElementById('hist-ta-' + idx);
@@ -843,9 +929,13 @@ function openModal(idx, isNew) {
     rebuildNewMName();
   }
 
-  // 溫度：舊商品隱藏
+  // 溫度：舊商品也顯示，自動偵測
   if (!isNew) {
-    document.getElementById('mTempRow').style.display = 'none';
+    document.getElementById('mTempRow').style.display = '';
+    var detectName = (match && match.title) ? match.title : calItem.name;
+    var autoTemp2 = detectTempCode(detectName);
+    var tempVal2 = autoTemp2 === '1' ? '\u51b7\u51cd' : autoTemp2 === '2' ? '\u51b7\u85cf' : '\u5e38\u6eab';
+    document.getElementById('mTemp').value = tempVal2;
   }
 
   document.getElementById('modalOverlay').classList.add('show');
@@ -864,14 +954,18 @@ function reparseDesc() {
     parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
   }
   if (parsed.desc) descEl.value = parsed.desc;
-  // 新品：更新品名 + 自動偵測溫度 + 重算編號
-  if (modalCtx && modalCtx.isNew) {
-    if (parsed.name) modalCtx.productName = parsed.name;
-    // 自動偵測溫度
-    var autoTemp = detectTempCode(parsed.name || '');
+  // 更新溫度（新品+舊商品都適用）
+  if (modalCtx) {
+    var detectName = parsed.name || '';
+    var autoTemp = detectTempCode(detectName);
     var tempVal = autoTemp === '1' ? '\u51b7\u51cd' : autoTemp === '2' ? '\u51b7\u85cf' : '\u5e38\u6eab';
     document.getElementById('mTemp').value = tempVal;
-    rebuildNewMName();
+    if (modalCtx.isNew) {
+      if (parsed.name) modalCtx.productName = parsed.name;
+      rebuildNewMName();
+    } else {
+      updateMNameFields();
+    }
   }
 }
 
@@ -1022,18 +1116,14 @@ function clearBatch() {
 
 // 標記日曆清單中已加入批次的商品
 function markBatchItems() {
-  // 收集 batchList 裡所有商品名稱（calItem.name）
   var batchNames = {};
   batchList.forEach(function(item) {
     if (item.calName) batchNames[item.calName] = true;
   });
-  // 掃描所有 result-item
-  var items = document.querySelectorAll('.result-item');
+  var items = document.querySelectorAll('.list-item');
   items.forEach(function(el) {
-    var nameEl = el.querySelector('.result-name');
-    if (!nameEl) return;
-    var name = nameEl.textContent;
-    if (batchNames[name]) {
+    var name = el.getAttribute('data-calname');
+    if (name && batchNames[name]) {
       el.classList.add('in-batch');
     } else {
       el.classList.remove('in-batch');
@@ -1153,6 +1243,67 @@ function exportXLS() {
 
   var today = dateStr.replace(/-/g, '');
   XLSX.writeFile(wb, '\u6a02\u6a02\u4e0a\u67b6_' + today + '.xls', { bookType: 'xls' });
+}
+
+// ===== 匯出 ERP 匯入檔（給 branch_admin 商品建檔批次匯入用）=====
+function exportForERP() {
+  if (!batchList.length) { alert('清單是空的'); return; }
+
+  var tempMap = { '1': '冷凍', '2': '冷藏', '3': '常溫' };
+  var dateStr = document.getElementById('targetDate').value; // YYYY-MM-DD
+  var year = new Date(dateStr).getFullYear();
+
+  // 表頭對齊 branch_admin bulkImportProducts 的 fieldAliases
+  var headers = ['商品編號', '商品名稱', '售價', '商品分類', '開團日', '結單日'];
+  var data = [headers];
+
+  batchList.forEach(function(item) {
+    var hasStyles = item.styles && item.styles.length > 0;
+
+    // 結單日轉 YYYY-MM-DD
+    var endDate = '';
+    if (item.closeDate) {
+      var parts = item.closeDate.split('/');
+      if (parts.length === 2) {
+        var cm = parseInt(parts[0], 10);
+        var cd = parseInt(parts[1], 10);
+        var orderMonth = parseInt(dateStr.slice(5, 7), 10);
+        var y = year;
+        if (cm < orderMonth) y++;
+        endDate = y + '-' + String(cm).padStart(2, '0') + '-' + String(cd).padStart(2, '0');
+      }
+    }
+
+    if (hasStyles) {
+      // 有款式：每個款式拆成一行
+      item.styles.forEach(function(s) {
+        var idMatch = s.name.match(/#([^#]+)#/);
+        var pid = idMatch ? idMatch[1] : '';
+        var styleName = s.name.replace(/#[^#]*#/g, '').trim();
+        // 商品名稱 = 款式名 - 主商品名（去掉編號和 emoji）
+        var mainName = item.name.replace(/#[^#]*#/g, '').replace(/[⬜🔥⏰💰🐷🍤].*/g, '').trim();
+        var fullName = styleName + ' - ' + mainName;
+        var temp = pid ? (tempMap[pid.charAt(0)] || '常溫') : '常溫';
+        var price = s.price || item.price;
+        data.push([pid, fullName, price, temp, dateStr, endDate]);
+      });
+    } else {
+      // 無款式：一行
+      var idMatch = item.name.match(/#([^#]+)#/);
+      var pid = idMatch ? idMatch[1] : (item.customId || '');
+      var mainName = item.name.replace(/#[^#]*#/g, '').replace(/[⬜🔥⏰💰🐷🍤].*/g, '').trim();
+      var temp = pid ? (tempMap[pid.charAt(0)] || '常溫') : '常溫';
+      data.push([pid, mainName, item.price, temp, dateStr, endDate]);
+    }
+  });
+
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{ wch: 12 }, { wch: 35 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 12 }];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'ERP匯入');
+
+  var today = dateStr.replace(/-/g, '');
+  XLSX.writeFile(wb, 'ERP匯入_' + today + '.xls', { bookType: 'xls' });
 }
 </script>
 </body>
