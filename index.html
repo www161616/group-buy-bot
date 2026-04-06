@@ -1210,7 +1210,7 @@ function exportXLS() {
 
     var row = [
       '',           // 保留欄位
-      '',           // 自定義編號（空）
+      item.customId || item.feedId || '',  // 自定義編號
       titleStr,     // 商品名稱
       mainCat,      // 主要分類
       '',           // 細項一
@@ -1274,11 +1274,15 @@ function exportForERP() {
       }
     }
 
+    // 主商品名稱的編號（fallback 用）
+    var mainIdMatch = item.name.match(/#([^#]+)#/);
+    var mainPid = mainIdMatch ? mainIdMatch[1] : (item.customId || '');
+
     if (hasStyles) {
       // 有款式：每個款式拆成一行
       item.styles.forEach(function(s) {
         var idMatch = s.name.match(/#([^#]+)#/);
-        var pid = idMatch ? idMatch[1] : '';
+        var pid = idMatch ? idMatch[1] : mainPid;
         var styleName = s.name.replace(/#[^#]*#/g, '').trim();
         // 商品名稱 = 款式名 - 主商品名（去掉編號和 emoji）
         var mainName = item.name.replace(/#[^#]*#/g, '').replace(/[⬜🔥⏰💰🐷🍤].*/g, '').trim();
