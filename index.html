@@ -1278,24 +1278,31 @@ function exportForERP() {
     var mainIdMatch = item.name.match(/#([^#]+)#/);
     var mainPid = mainIdMatch ? mainIdMatch[1] : (item.customId || '');
 
+    // 清理商品名稱：去掉 #編號#、emoji、(複製)、結單日資訊、前後垃圾符號
+    function cleanName(str) {
+      return str.replace(/#[^#]*#/g, '').replace(/\(複製\)/g, '').replace(/[⬜🔥⏰💰🐷🍤🎉📢].*/g, '').replace(/\d+\/\d+結單/g, '').replace(/^\s*[-–—]\s*/, '').replace(/\s*[-–—]\s*$/, '').trim();
+    }
+    // 清理款式名稱：去掉 (A)(B)... 前綴、#編號#、(複製)
+    function cleanStyleName(str) {
+      return str.replace(/#[^#]*#/g, '').replace(/\(複製\)/g, '').replace(/^\s*\([A-Za-z]\)\s*/, '').replace(/^\s*[A-Za-z]\)\s*/, '').trim();
+    }
+
     if (hasStyles) {
       // 有款式：每個款式拆成一行
       item.styles.forEach(function(s) {
         var idMatch = s.name.match(/#([^#]+)#/);
         var pid = idMatch ? idMatch[1] : mainPid;
-        var styleName = s.name.replace(/#[^#]*#/g, '').trim();
-        // 商品名稱 = 款式名 - 主商品名（去掉編號和 emoji）
-        var mainName = item.name.replace(/#[^#]*#/g, '').replace(/[⬜🔥⏰💰🐷🍤].*/g, '').trim();
-        var fullName = styleName + ' - ' + mainName;
+        var styleName = cleanStyleName(s.name);
+        var mainName = cleanName(item.name);
+        var fullName = styleName + (mainName ? ' - ' + mainName : '');
         var temp = pid ? (tempMap[pid.charAt(0)] || '常溫') : '常溫';
         var price = s.price || item.price;
         data.push([pid, fullName, price, temp, dateStr, endDate]);
       });
     } else {
       // 無款式：一行
-      var idMatch = item.name.match(/#([^#]+)#/);
-      var pid = idMatch ? idMatch[1] : (item.customId || '');
-      var mainName = item.name.replace(/#[^#]*#/g, '').replace(/[⬜🔥⏰💰🐷🍤].*/g, '').trim();
+      var pid = mainPid;
+      var mainName = cleanName(item.name);
       var temp = pid ? (tempMap[pid.charAt(0)] || '常溫') : '常溫';
       data.push([pid, mainName, item.price, temp, dateStr, endDate]);
     }
