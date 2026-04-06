@@ -1280,11 +1280,21 @@ function exportForERP() {
 
     // 清理商品名稱：去掉 #編號#、emoji、(複製)、結單日資訊、前後垃圾符號
     function cleanName(str) {
-      return str.replace(/#[^#]*#/g, '').replace(/\(複製\)/g, '').replace(/[⬜🔥⏰💰🐷🍤🎉📢].*/g, '').replace(/\d+\/\d+結單/g, '').replace(/[-–—]/g, '').replace(/\s+/g, ' ').trim();
+      // 先從 ⏰ 或 💰 截斷（後面都是售價/結單日/描述，不要）
+      var cut = str.replace(/#[^#]*#/g, '');
+      var cutIdx = cut.search(/[⏰💰🔥]/);
+      if (cutIdx > 0) cut = cut.substring(0, cutIdx);
+      return cut
+        .replace(/\(複製\)/g, '')
+        .replace(/\d+\/\d+結單/g, '')
+        .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{2702}-\u{27B0}\u{1FA00}-\u{1FAFF}\u{2B50}\u{2B55}\u{231A}-\u{23F0}⬜⬛]/gu, '')
+        .replace(/[-–—]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
     }
-    // 清理款式名稱：去掉 (A)(B)(C)... 前綴、數字編號前綴、#編號#、(複製)
+    // 清理款式名稱：去掉 (A)(B)(C)... 前綴、#編號#、(複製)
     function cleanStyleName(str) {
-      return str.replace(/#[^#]*#/g, '').replace(/\(複製\)/g, '').replace(/^\s*\([A-Za-z]\)\s*/, '').replace(/^\s*[A-Za-z]\)\s*/, '').replace(/^\s*\d{3,}\s*/, '').replace(/[-–—]/g, '').replace(/\s+/g, ' ').trim();
+      return str.replace(/#[^#]*#/g, '').replace(/\(複製\)/g, '').replace(/^\s*\([A-Za-z]\)\s*/, '').replace(/^\s*[A-Za-z]\)\s*/, '').replace(/\s+/g, ' ').trim();
     }
 
     if (hasStyles) {
