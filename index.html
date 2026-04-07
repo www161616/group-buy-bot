@@ -864,15 +864,21 @@ function openModal(idx, isNew) {
   tbody.innerHTML = '';
 
   if (!isNew && match) {
-    // ── 舊商品：Supabase 資料為底，供應商文案的新價格覆蓋 ──
+    // ── 舊商品：Supabase 資料為底，供應商文案的新價格/日期/文案覆蓋 ──
     var botParsed = parseBotText(rawBotText);
-    // 商品名稱 = Supabase 的 title（已含 ⬜💰⏰#編號#）
-    document.getElementById('mName').value = match.title || '';
-    // 售價：供應商文案優先，沒有才用 Supabase 舊價
-    document.getElementById('mPrice').value = botParsed.price || match.priceMin || '';
-    // 結單日：供應商文案優先，沒有才從 title 解析
-    var cd = botParsed.date || parseCloseDateFromText(match.title || '');
-    document.getElementById('mCloseDate').value = cd;
+    var newPrice = botParsed.price || match.priceMin || '';
+    var newDate = botParsed.date || parseCloseDateFromText(match.title || '');
+    // 商品名稱：用新價格和新結單日重組舊 title，找不到 💰/⏰ 區塊則不動
+    var newTitle = match.title || '';
+    if (botParsed.price) {
+      newTitle = newTitle.replace(/\ud83d\udcb0\s*\d+/, '\ud83d\udcb0' + botParsed.price);
+    }
+    if (botParsed.date) {
+      newTitle = newTitle.replace(/\u23f0\s*\d{1,2}\/\d{1,2}\s*\u7d50\u55ae/, '\u23f0' + botParsed.date + '\u7d50\u55ae');
+    }
+    document.getElementById('mName').value = newTitle;
+    document.getElementById('mPrice').value = newPrice;
+    document.getElementById('mCloseDate').value = newDate;
     // 款式：名稱用 Supabase（含 #編號#），價格用供應商文案的新價覆蓋
     if (match.styles && match.styles.length) {
       // 建立字母→新價格的對照表
@@ -887,15 +893,21 @@ function openModal(idx, isNew) {
         if (letterMatch) {
           var letter = letterMatch[1].toUpperCase();
           if (botPriceMap[letter]) stylePrice = botPriceMap[letter];
+        } else if (botParsed.price) {
+          // 沒有字母款式時，用供應商文案的主售價覆蓋
+          stylePrice = botParsed.price;
         }
         addModalStyleRow(s.name, stylePrice);
       });
     }
-    // 描述：優先歷史文案 > Bot 文案
-    var histTa = document.getElementById('hist-ta-' + idx);
-    var descText = (histTa && histTa.value) ? histTa.value : '';
+    // 描述：優先順序 供應商文案 > 歷史文案 > Supabase description
+    var descText = '';
+    if (rawBotText) descText = botParsed.desc;
+    if (!descText) {
+      var histTa = document.getElementById('hist-ta-' + idx);
+      if (histTa && histTa.value) descText = histTa.value;
+    }
     if (!descText && match.description) descText = match.description;
-    if (!descText && rawBotText) descText = parseBotText(rawBotText).desc;
     document.getElementById('mDesc').value = descText;
   } else {
     // ── 新品：從文案解析 + 自動產生編號 ──
