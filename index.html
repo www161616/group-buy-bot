@@ -955,20 +955,62 @@ function openModal(idx, isNew) {
 
 function reparseDesc() {
   var descEl = document.getElementById('mDesc');
-  var text = descEl.value;
+  // 優先讀原始 BOT 文案，沒有才用 mDesc
+  var text = (modalCtx && modalCtx.rawBotText) || descEl.value;
   if (!text) return;
   var parsed = parseBotText(text);
-  if (parsed.price) document.getElementById('mPrice').value = parsed.price;
-  if (parsed.date) document.getElementById('mCloseDate').value = parsed.date;
-  if (parsed.subs && parsed.subs.length) {
-    var tbody = document.getElementById('mStylesBody');
-    tbody.innerHTML = '';
-    parsed.subs.forEach(function(s) { addModalStyleRow(s.name, ''); });
+
+  if (modalCtx && !modalCtx.isNew && modalCtx.match) {
+    // ── 舊品：套用跟 openModal 舊品分支相同的邏輯 ──
+    var match = modalCtx.match;
+    // 商品名稱：用新價格和新結單日重組舊 title
+    var newTitle = match.title || '';
+    if (parsed.price) {
+      newTitle = newTitle.replace(/\ud83d\udcb0\s*\d+/, '\ud83d\udcb0' + parsed.price);
+    }
+    if (parsed.date) {
+      newTitle = newTitle.replace(/\u23f0\s*\d{1,2}\/\d{1,2}\s*\u7d50\u55ae/, '\u23f0' + parsed.date + '\u7d50\u55ae');
+    }
+    document.getElementById('mName').value = newTitle;
+    if (parsed.price) document.getElementById('mPrice').value = parsed.price;
+    if (parsed.date) document.getElementById('mCloseDate').value = parsed.date;
+    // 款式：保留 Supabase 名稱，只更新價格
+    if (match.styles && match.styles.length) {
+      var botPriceMap = {};
+      if (parsed.subs && parsed.subs.length) {
+        parsed.subs.forEach(function(bs) { if (bs.price) botPriceMap[bs.letter] = bs.price; });
+      }
+      var tbody = document.getElementById('mStylesBody');
+      tbody.innerHTML = '';
+      match.styles.forEach(function(s) {
+        var stylePrice = s.price;
+        var letterMatch = (s.name || '').match(/^\(?([A-Za-z])\)/);
+        if (letterMatch) {
+          var letter = letterMatch[1].toUpperCase();
+          if (botPriceMap[letter]) stylePrice = botPriceMap[letter];
+        } else if (parsed.price) {
+          stylePrice = parsed.price;
+        }
+        addModalStyleRow(s.name, stylePrice);
+      });
+    }
+    // 描述：完全用供應商文案
+    descEl.value = parsed.desc || '';
+  } else {
+    // ── 新品：原本的邏輯 ──
+    if (parsed.price) document.getElementById('mPrice').value = parsed.price;
+    if (parsed.date) document.getElementById('mCloseDate').value = parsed.date;
+    if (parsed.subs && parsed.subs.length) {
+      var tbody2 = document.getElementById('mStylesBody');
+      tbody2.innerHTML = '';
+      parsed.subs.forEach(function(s) { addModalStyleRow(s.name, s.price || ''); });
+    }
+    if (parsed.desc) descEl.value = parsed.desc;
   }
-  if (parsed.desc) descEl.value = parsed.desc;
+
   // 更新溫度（新品+舊商品都適用）
   if (modalCtx) {
-    var detectName = parsed.name || '';
+    var detectName = parsed.name || (modalCtx.match && modalCtx.match.title) || '';
     var autoTemp = detectTempCode(detectName);
     var tempVal = autoTemp === '1' ? '\u51b7\u51cd' : autoTemp === '2' ? '\u51b7\u85cf' : '\u5e38\u6eab';
     document.getElementById('mTemp').value = tempVal;
