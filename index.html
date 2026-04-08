@@ -113,7 +113,7 @@ header{background:var(--text);color:white;padding:0 24px;display:flex;align-item
 body{padding-bottom:52px}
 /* Split layout */
 .split-layout{display:flex;gap:16px;min-height:60vh}
-.left-panel{width:260px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow-y:auto;max-height:calc(100vh - 180px);position:sticky;top:68px}
+.left-panel{width:360px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow-y:auto;max-height:calc(100vh - 180px);position:sticky;top:68px}
 .right-panel{flex:1;min-width:0}
 .list-item{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;transition:background .1s}
 .list-item:last-child{border-bottom:none}
@@ -140,6 +140,7 @@ body{padding-bottom:52px}
     <input class="date-input" id="targetDate" type="date" style="font-size:15px;padding:10px 14px;">
     <button class="btn btn-green" onclick="fetchCalendar()" id="fetchBtn" style="font-size:14px;padding:10px 20px;">📅 讀取今日商品</button>
     <button class="btn btn-secondary" onclick="refreshBotItems()" id="refreshBotBtn" style="font-size:14px;padding:10px 20px;">🔄 重新整理文案</button>
+    <button class="btn btn-secondary" onclick="reloadLeleProducts()" id="reloadLeleBtn" style="font-size:14px;padding:10px 20px;">🔄 重載商品庫</button>
     <div id="log" style="flex:1;font-family:monospace;font-size:12px;color:#7a7060;"></div>
   </div>
   <div id="resultsArea" style="display:none;">
@@ -209,6 +210,9 @@ var SUPABASE_URL = 'https://asugjynpocwygggttxyo.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_cG0dslg6JnSwOtPSBko2Eg_VB0NtbTW';
 var GCAL_API_KEY = 'AIzaSyCMTlpH-m6jeOGy0_qjnpP9GaFlqSzedZM';
 var GCAL_CAL_ID = 'j5pqf76fhd0all9mf25oddokc0@group.calendar.google.com';
+var MATCH_THRESHOLD = 0.3;  // 比對門檻：低於此分數視為新品
+var LELE_CACHE_KEY = 'lt_lele_products_cache';
+var LELE_CACHE_TTL = 24 * 60 * 60 * 1000;  // 24 小時
 var calendarItems = [];
 var matchResults = [];
 var currentFilter = 'all';
@@ -217,12 +221,14 @@ var botTextMap = {};
 var batchList = [];
 var modalCtx = null; // 目前 modal 對應的資料
 var selectedIdx = 0;
+var allLeleProducts = [];  // 全部樂樂商品（本地快取）
 
 var EMOJI_LIST = ['\u2764\ufe0f','\ud83d\udea9','\u2728','\ud83c\udf89','\ud83d\udc4d','\ud83d\udd14','\ud83d\ude18','\ud83e\udd70','\ud83c\udf80','\ud83d\udc49','\ud83e\udee0','\ud83c\udf88','\ud83c\udf81','\ud83d\uded2','\ud83d\udc8e','\ud83d\udc8b','\ud83d\udcde','\ud83d\udccd','\ud83d\udccc','\u23f0','\ud83c\udf08','\u26a1','\ud83d\udd25','\ud83d\udca5','\ud83d\udeab','\u2753','\u2757','\u203c\ufe0f','\u2049\ufe0f','\ud83d\udcaf'];
 
 window.addEventListener('DOMContentLoaded', function() {
   document.getElementById('targetDate').value = new Date().toISOString().split('T')[0];
   fetchBotItems();
+  loadAllLeleProducts();
   renderBatch();
   // 溫度改變時即時重算編號（新品）
   document.getElementById('mTemp').addEventListener('change', function() {
@@ -262,6 +268,56 @@ function refreshBotItems() {
       btn.disabled = false;
       btn.textContent = '\ud83d\udd04 \u91cd\u65b0\u6574\u7406\u6587\u6848';
     });
+}
+
+// ── 載入全部樂樂商品（本地快取）──
+function loadAllLeleProducts(forceReload) {
+  var btn = document.getElementById('reloadLeleBtn');
+  // 嘗試讀 cache
+  if (!forceReload) {
+    try {
+      var cached = localStorage.getItem(LELE_CACHE_KEY);
+      if (cached) {
+        var obj = JSON.parse(cached);
+        if (obj && obj.ts && (Date.now() - obj.ts < LELE_CACHE_TTL) && obj.data && obj.data.length) {
+          allLeleProducts = obj.data;
+          if (btn) btn.textContent = '\ud83d\udd04 \u5546\u54c1\u5eab ' + allLeleProducts.length + ' \u7b46';
+          return;
+        }
+      }
+    } catch(e) { console.log('cache read fail:', e); }
+  }
+  // 從 Supabase 撈
+  if (btn) { btn.disabled = true; btn.textContent = '\u8f09\u5165\u4e2d\u2026'; }
+  var fields = 'id,title,price_min,price_max,img_url,feed_id,styles,description';
+  // 分頁撈，避免 1000 筆預設限制
+  var allRows = [];
+  function fetchPage(offset) {
+    var url = SUPABASE_URL + '/rest/v1/gb_lele_products?select=' + fields + '&order=id.desc&limit=1000&offset=' + offset;
+    return fetch(url, { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } })
+      .then(function(r) { return r.json(); })
+      .then(function(rows) {
+        if (!rows || !rows.length) return null;
+        allRows = allRows.concat(rows);
+        if (btn) btn.textContent = '\u8f09\u5165\u4e2d ' + allRows.length + '\u2026';
+        if (rows.length === 1000) return fetchPage(offset + 1000);
+        return null;
+      });
+  }
+  fetchPage(0).then(function() {
+    allLeleProducts = allRows;
+    try {
+      localStorage.setItem(LELE_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: allRows }));
+    } catch(e) { console.log('cache write fail:', e); }
+    if (btn) { btn.disabled = false; btn.textContent = '\ud83d\udd04 \u5546\u54c1\u5eab ' + allLeleProducts.length + ' \u7b46'; }
+  }).catch(function(err) {
+    if (btn) { btn.disabled = false; btn.textContent = '\u26a0 \u8f09\u5165\u5931\u6557'; }
+    console.log('load lele fail:', err);
+  });
+}
+
+function reloadLeleProducts() {
+  loadAllLeleProducts(true);
 }
 
 // ── expandParenChars: 括號字元替換（唯一的清理入口）──
@@ -527,24 +583,24 @@ function extractSearchKey(name) {
   return cjk.slice(0, 5);
 }
 
-// ── Supabase search ──
-async function searchSupabase(keyword) {
-  var query = extractSearchKey(keyword);
-  if (!query || query.length < 2) {
-    // fallback: 取任意中文
-    query = keyword.replace(/[^\u4e00-\u9fff]/g, '').slice(0, 4);
-  }
-  if (!query) return null;
-  var url = SUPABASE_URL + '/rest/v1/gb_lele_products?title=ilike.*' + encodeURIComponent(query) + '*&select=id,title,price_min,price_max,img_url,feed_id,styles,description&limit=10';
-  var res = await fetch(url, { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } });
-  var rows = await res.json();
-  if (!rows || !rows.length) return null;
+// ── 本地比對（從 allLeleProducts 找最相似商品）──
+function searchLocal(keyword) {
+  if (!allLeleProducts || !allLeleProducts.length) return null;
   var best = null, bestScore = 0;
-  for (var i = 0; i < rows.length; i++) {
-    var s = similarity(keyword, rows[i].title);
-    if (s > bestScore) { bestScore = s; best = rows[i]; }
+  for (var i = 0; i < allLeleProducts.length; i++) {
+    var row = allLeleProducts[i];
+    // 比 title
+    var s = similarity(keyword, row.title || '');
+    // 也比每個 style.name，取最高分
+    if (row.styles && row.styles.length) {
+      for (var j = 0; j < row.styles.length; j++) {
+        var ss = similarity(keyword, row.styles[j].name || '');
+        if (ss > s) s = ss;
+      }
+    }
+    if (s > bestScore) { bestScore = s; best = row; }
   }
-  if (bestScore < 0.25) return null;
+  if (!best || bestScore < MATCH_THRESHOLD) return null;
   return {
     id: best.id, title: best.title, priceMin: best.price_min, priceMax: best.price_max,
     imgUrl: best.img_url, feedId: best.feed_id,
@@ -605,27 +661,42 @@ function similarity(a, b) {
   if (ta.indexOf(tb) !== -1) return 0.90;
   var shorter = ta.length < tb.length ? ta : tb;
   var longer = ta.length < tb.length ? tb : ta;
+  // 最長共同子字串
   var maxLen = 0;
   for (var i = 0; i < shorter.length; i++)
     for (var j = i + 2; j <= shorter.length; j++) {
       var sub = shorter.slice(i, j);
       if (longer.indexOf(sub) !== -1 && sub.length > maxLen) maxLen = sub.length;
     }
+  // 字元 set 交集（忽略順序，能容忍中間夾雜英文/數字）
   var setA = new Set(ta), setB = new Set(tb);
   var common = 0; setA.forEach(function(c) { if (setB.has(c)) common++; });
-  return Math.max(maxLen / shorter.length * 0.8, (2 * common) / (setA.size + setB.size) * 0.5);
+  // 連續子字串占短字串比例
+  var subScore = maxLen / shorter.length;
+  // 「短字串字元」有多少比例出現在長字串裡（解決「泰國TH原裝」被打散問題）
+  var shorterSet = ta.length < tb.length ? setA : setB;
+  var longerSet = ta.length < tb.length ? setB : setA;
+  var shorterIn = 0; shorterSet.forEach(function(c) { if (longerSet.has(c)) shorterIn++; });
+  var coverScore = shorterIn / shorterSet.size;
+  // 三種分數取最大：連續子字串、字元覆蓋率（×0.85）、jaccard 相似度
+  var jaccard = (2 * common) / (setA.size + setB.size);
+  return Math.max(subScore * 0.9, coverScore * 0.85, jaccard * 0.7);
 }
 
-async function runMatch() {
-  setLog('\u6bd4\u5c0d\u5546\u54c1\u5eab\u4e2d\u2026 0 / ' + calendarItems.length);
+function runMatch() {
+  if (!allLeleProducts || !allLeleProducts.length) {
+    setLog('\u26a0 \u5546\u54c1\u5eab\u672a\u8f09\u5165\uff0c\u8acb\u9ede\u300c\u91cd\u8f09\u5546\u54c1\u5eab\u300d');
+    return;
+  }
+  setLog('\u672c\u5730\u6bd4\u5c0d\u4e2d\u2026 (' + allLeleProducts.length + ' \u7b46\u5546\u54c1)');
   matchResults = [];
   for (var i = 0; i < calendarItems.length; i++) {
     var item = calendarItems[i];
-    var result = await searchSupabase(item.name);
+    var result = searchLocal(item.name);
     matchResults.push({ calItem: item, match: result || null, score: result ? result.score : 0, isNew: !result });
-    setLog('\u6bd4\u5c0d\u5546\u54c1\u5eab\u4e2d\u2026 ' + (i+1) + ' / ' + calendarItems.length);
   }
-  setLog('\u2713 \u6bd4\u5c0d\u5b8c\u6210');
+  var matched = matchResults.filter(function(r) { return !r.isNew; }).length;
+  setLog('\u2713 \u6bd4\u5c0d\u5b8c\u6210\uff1a' + matched + ' / ' + matchResults.length);
   renderResults();
 }
 
