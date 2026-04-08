@@ -343,9 +343,20 @@ function loadAllLeleProducts(forceReload) {
   }
   fetchPage(0).then(function() {
     allLeleProducts = allRows;
+    // 寫入 localStorage 時瘦身：移除 description（最佔空間，比對也用不到）
     try {
-      localStorage.setItem(LELE_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: allRows }));
-    } catch(e) { console.log('cache write fail:', e); }
+      var slim = allRows.map(function(r) {
+        return {
+          id: r.id, title: r.title, price_min: r.price_min, price_max: r.price_max,
+          img_url: r.img_url, feed_id: r.feed_id, styles: r.styles
+        };
+      });
+      localStorage.setItem(LELE_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: slim }));
+    } catch(e) {
+      console.log('cache write fail:', e);
+      // 寫不進就清掉，下次照樣從網路撈
+      try { localStorage.removeItem(LELE_CACHE_KEY); } catch(_) {}
+    }
     if (btn) { btn.disabled = false; btn.textContent = '\ud83d\udd04 \u5546\u54c1\u5eab ' + allLeleProducts.length + ' \u7b46'; }
   }).catch(function(err) {
     if (btn) { btn.disabled = false; btn.textContent = '\u26a0 \u8f09\u5165\u5931\u6557'; }
@@ -626,12 +637,15 @@ function searchLocal(keyword) {
   var best = null, bestScore = 0;
   for (var i = 0; i < allLeleProducts.length; i++) {
     var row = allLeleProducts[i];
-    // 比 title
+    // 比 title（主要依據）
     var s = similarity(keyword, row.title || '');
-    // 也比每個 style.name，取最高分
+    // 也比每個 style.name，但打 0.85 折（避免短款式名亂中分）
     if (row.styles && row.styles.length) {
       for (var j = 0; j < row.styles.length; j++) {
-        var ss = similarity(keyword, row.styles[j].name || '');
+        var styleName = row.styles[j].name || '';
+        // 太短的款式名（< 4 中文字）跳過，避免「紅色」「原味」之類亂配
+        if (styleName.replace(/[^\u4e00-\u9fff]/g, '').length < 4) continue;
+        var ss = similarity(keyword, styleName) * 0.85;
         if (ss > s) s = ss;
       }
     }
@@ -693,7 +707,7 @@ function tokenize(str) {
 }
 function similarity(a, b) {
   var ta = tokenize(a), tb = tokenize(b);
-  if (!ta || !tb) return 0;
+  if (!ta || !tb || ta.length < 2 || tb.length < 2) return 0;
   if (tb.indexOf(ta) !== -1) return 0.95;
   if (ta.indexOf(tb) !== -1) return 0.90;
   var shorter = ta.length < tb.length ? ta : tb;
@@ -708,13 +722,15 @@ function similarity(a, b) {
   // 字元 set 交集（忽略順序，能容忍中間夾雜英文/數字）
   var setA = new Set(ta), setB = new Set(tb);
   var common = 0; setA.forEach(function(c) { if (setB.has(c)) common++; });
-  // 連續子字串占短字串比例
-  var subScore = maxLen / shorter.length;
-  // 「短字串字元」有多少比例出現在長字串裡（解決「泰國TH原裝」被打散問題）
+  // 連續子字串占短字串比例（要求至少 3 字共同，避免單字巧合）
+  var subScore = (maxLen >= 3) ? maxLen / shorter.length : 0;
+  // 「短字串字元」有多少比例出現在長字串裡
+  // 要求短字串至少 4 字，且覆蓋率必須 ≥ 0.8（避免「噴霧式油瓶」中 3 字命中就過關）
   var shorterSet = ta.length < tb.length ? setA : setB;
   var longerSet = ta.length < tb.length ? setB : setA;
   var shorterIn = 0; shorterSet.forEach(function(c) { if (longerSet.has(c)) shorterIn++; });
-  var coverScore = shorterIn / shorterSet.size;
+  var rawCover = (shorter.length >= 4) ? shorterIn / shorterSet.size : 0;
+  var coverScore = (rawCover >= 0.8) ? rawCover : 0;
   // 三種分數取最大：連續子字串、字元覆蓋率（×0.85）、jaccard 相似度
   var jaccard = (2 * common) / (setA.size + setB.size);
   return Math.max(subScore * 0.9, coverScore * 0.85, jaccard * 0.7);
