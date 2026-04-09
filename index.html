@@ -186,6 +186,7 @@ body{padding-bottom:52px}
     <h3 id="modalTitle">整理上架</h3>
     <label>商品名稱</label>
     <input id="mName" type="text">
+    <div id="mErpDup" style="font-size:12px;margin-top:4px;display:none;"></div>
     <label>售價</label>
     <input id="mPrice" type="number">
     <label>結單日（M/D）<span style="color:var(--accent);font-weight:500;font-size:11px;margin-left:6px;">請確定結單日是否正確</span></label>
@@ -242,6 +243,7 @@ window.addEventListener('DOMContentLoaded', function() {
   // 售價、結單日改變時更新 mName
   document.getElementById('mPrice').addEventListener('input', updateMNameFields);
   document.getElementById('mCloseDate').addEventListener('input', updateMNameFields);
+  document.getElementById('mName').addEventListener('input', debouncedCheckErpDup);
   // 還原左欄寬度
   var savedW = parseInt(localStorage.getItem('lt_left_panel_width'), 10);
   if (savedW && savedW >= 200 && savedW <= 1000) {
@@ -366,6 +368,74 @@ function loadAllLeleProducts(forceReload) {
 
 function reloadLeleProducts() {
   loadAllLeleProducts(true);
+}
+
+// ── ERP products 查重 ──
+var erpDupTimer = null;
+var erpDupCache = {};  // { id: { name } | null }
+
+function debouncedCheckErpDup() {
+  if (erpDupTimer) clearTimeout(erpDupTimer);
+  erpDupTimer = setTimeout(checkErpDup, 400);
+}
+
+function checkErpDup() {
+  var mName = document.getElementById('mName').value;
+  var dupEl = document.getElementById('mErpDup');
+  // 從 mName 抓 #...# 編號
+  var idMatch = mName.match(/#([^#]+)#/);
+  if (!idMatch) { dupEl.style.display = 'none'; return; }
+  var id = idMatch[1].trim();
+  if (!id) { dupEl.style.display = 'none'; return; }
+  // cache hit
+  if (erpDupCache.hasOwnProperty(id)) {
+    showErpDup(id, erpDupCache[id]);
+    return;
+  }
+  // 查 ERP
+  fetch(SUPABASE_URL + '/rest/v1/products?id=eq.' + encodeURIComponent(id) + '&select=id,name&limit=1', {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+  }).then(function(r) { return r.json(); }).then(function(rows) {
+    var hit = (rows && rows.length) ? rows[0] : null;
+    erpDupCache[id] = hit;
+    showErpDup(id, hit);
+  }).catch(function(e) { console.log('checkErpDup fail:', e); });
+}
+
+function showErpDup(id, hit) {
+  var dupEl = document.getElementById('mErpDup');
+  if (hit) {
+    dupEl.style.display = 'block';
+    dupEl.style.color = '#c0392b';
+    dupEl.textContent = '\u26a0 ERP \u5df2\u6709\u6b64\u7de8\u865f\uff1a' + hit.name;
+  } else {
+    dupEl.style.display = 'none';
+  }
+}
+
+// 批次查 ERP（給匯出用）
+function batchCheckErp(ids) {
+  if (!ids || !ids.length) return Promise.resolve({});
+  // 過濾 cache
+  var toQuery = ids.filter(function(id) { return !erpDupCache.hasOwnProperty(id); });
+  var result = {};
+  ids.forEach(function(id) { if (erpDupCache.hasOwnProperty(id)) result[id] = erpDupCache[id]; });
+  if (!toQuery.length) return Promise.resolve(result);
+  // 用 in.() 一次查
+  var idList = toQuery.map(function(i) { return '"' + i.replace(/"/g, '') + '"'; }).join(',');
+  var url = SUPABASE_URL + '/rest/v1/products?id=in.(' + encodeURIComponent(idList) + ')&select=id,name,price,category';
+  return fetch(url, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+  }).then(function(r) { return r.json(); }).then(function(rows) {
+    var map = {};
+    (rows || []).forEach(function(row) { map[row.id] = row; });
+    toQuery.forEach(function(id) {
+      var hit = map[id] || null;
+      erpDupCache[id] = hit;
+      result[id] = hit;
+    });
+    return result;
+  });
 }
 
 // ── expandParenChars: 括號字元替換（唯一的清理入口）──
@@ -1075,6 +1145,7 @@ function openModal(idx, isNew) {
   }
 
   document.getElementById('modalOverlay').classList.add('show');
+  checkErpDup();
 }
 
 function reparseDesc() {
@@ -1149,6 +1220,7 @@ function reparseDesc() {
 
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('show');
+  document.getElementById('mErpDup').style.display = 'none';
   modalCtx = null;
 }
 
@@ -1277,6 +1349,7 @@ function editBatch(i) {
   }
   document.getElementById('mDesc').value = item.desc || '';
   document.getElementById('modalOverlay').classList.add('show');
+  checkErpDup();
 }
 
 function removeBatch(i) {
@@ -1427,6 +1500,32 @@ function exportXLS() {
 function exportForERP() {
   if (!batchList.length) { alert('清單是空的'); return; }
 
+  // 先收集所有要查的 pid，批次查 ERP
+  var allPids = [];
+  batchList.forEach(function(item) {
+    var hasStyles = item.styles && item.styles.length > 0;
+    var mainIdMatch = item.name.match(/#([^#]+)#/);
+    var mainPid = mainIdMatch ? mainIdMatch[1] : (item.customId || '');
+    if (hasStyles) {
+      item.styles.forEach(function(s) {
+        var idMatch = s.name.match(/#([^#]+)#/);
+        var pid = idMatch ? idMatch[1] : mainPid;
+        if (pid) allPids.push(pid);
+      });
+    } else if (mainPid) {
+      allPids.push(mainPid);
+    }
+  });
+
+  batchCheckErp(allPids).then(function(erpMap) {
+    doExportForERP(erpMap);
+  }).catch(function(e) {
+    console.log('batchCheckErp fail, fallback:', e);
+    doExportForERP({});
+  });
+}
+
+function doExportForERP(erpMap) {
   var tempMap = { '1': '冷凍', '2': '冷藏', '3': '常溫' };
   var dateStr = document.getElementById('targetDate').value; // YYYY-MM-DD
   var year = new Date(dateStr).getFullYear();
@@ -1485,6 +1584,13 @@ function exportForERP() {
         var fullName = mainName + (styleName && styleName !== mainName ? ' ' + styleName : '');
         var temp = pid ? (tempMap[pid.charAt(0)] || '常溫') : '常溫';
         var price = s.price || item.price;
+        // ERP 已有此編號 → 用 ERP 資料覆蓋 name/price/category
+        var erpHit = erpMap[pid];
+        if (erpHit) {
+          fullName = erpHit.name || fullName;
+          price = (erpHit.price != null ? erpHit.price : price);
+          temp = erpHit.category || temp;
+        }
         data.push([pid, fullName, price, temp, dateStr, endDate]);
       });
     } else {
@@ -1492,7 +1598,14 @@ function exportForERP() {
       var pid = mainPid;
       var mainName = cleanName(item.name);
       var temp = pid ? (tempMap[pid.charAt(0)] || '常溫') : '常溫';
-      data.push([pid, mainName, item.price, temp, dateStr, endDate]);
+      var price = item.price;
+      var erpHit = erpMap[pid];
+      if (erpHit) {
+        mainName = erpHit.name || mainName;
+        price = (erpHit.price != null ? erpHit.price : price);
+        temp = erpHit.category || temp;
+      }
+      data.push([pid, mainName, price, temp, dateStr, endDate]);
     }
   });
 
