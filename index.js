@@ -26,7 +26,8 @@ async function getSheetClient() {
 }
 
 const SHEET_ID = process.env.SHEET_ID;
-const SHEET_NAME = '文案庫';
+const SHEET_NAME = '文案庫';            // #開團：直接進開團清單
+const SHEET_NAME_CANDIDATE = '候選池';  // #選品：進候選池待老闆評估
 
 // 存訊息到記憶體（用來抓 reply 的原始訊息）
 // key: messageId, value: { text, userId, timestamp }
@@ -109,6 +110,52 @@ async function handleEvent(event) {
     }
     return;
   }
+
+  // ── 觸發方式 3：#選品（進候選池、待老闆評估）──
+  if (text.includes('#選品')) {
+    const cleanText = text.replace(/#選品/g, '').trim();
+    if (!cleanText) return;
+
+    await saveToSheet({
+      text: cleanText,
+      productName: extractProductName(cleanText),
+      userId,
+      timestamp,
+      trigger: 'hashtag',
+    }, SHEET_NAME_CANDIDATE, '待評估');
+
+    await client.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: 'text', text: `📥 已加入候選池！\n【${extractProductName(cleanText)}】\n老闆會晚點決定要不要開團。` }],
+    });
+    return;
+  }
+
+  // ── 觸發方式 4：回覆「選品」──
+  if (text === '選品') {
+    const quotedId = event.message?.quotedMessageId;
+    if (quotedId && messageCache.has(quotedId)) {
+      const original = messageCache.get(quotedId);
+      await saveToSheet({
+        text: original.text,
+        productName: extractProductName(original.text),
+        userId,
+        timestamp,
+        trigger: 'reply',
+      }, SHEET_NAME_CANDIDATE, '待評估');
+
+      await client.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: 'text', text: `📥 已加入候選池！\n【${extractProductName(original.text)}】` }],
+      });
+    } else {
+      await client.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: 'text', text: '⚠️ 找不到原始文案。\n請在文案最後加上 #選品 再傳送。' }],
+      });
+    }
+    return;
+  }
 }
 
 function extractProductName(text) {
@@ -121,20 +168,20 @@ function extractProductName(text) {
     .slice(0, 30); // 最多30字
 }
 
-async function saveToSheet(data) {
+async function saveToSheet(data, sheetName = SHEET_NAME, status = '待上架') {
   try {
     const sheets = await getSheetClient();
 
     // 確保標題列存在
     const check = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A1:F1`,
+      range: `${sheetName}!A1:F1`,
     });
 
     if (!check.data.values || check.data.values.length === 0) {
       await sheets.spreadsheets.values.update({
         spreadsheetId: SHEET_ID,
-        range: `${SHEET_NAME}!A1`,
+        range: `${sheetName}!A1`,
         valueInputOption: 'RAW',
         requestBody: {
           values: [['時間', '商品名稱', '文案', '來源帳號', '觸發方式', '狀態']],
@@ -146,14 +193,14 @@ async function saveToSheet(data) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A:F`,
+      range: `${sheetName}!A:F`,
       valueInputOption: 'RAW',
       requestBody: {
-        values: [[time, data.productName, data.text, data.userId, data.trigger, '待上架']],
+        values: [[time, data.productName, data.text, data.userId, data.trigger, status]],
       },
     });
 
-    console.log(`Saved: ${data.productName}`);
+    console.log(`Saved to ${sheetName}: ${data.productName}`);
   } catch (err) {
     console.error('Sheet error:', err.message);
   }
