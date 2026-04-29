@@ -116,13 +116,25 @@ async function handleEvent(event) {
     const cleanText = text.replace(/#選品/g, '').trim();
     if (!cleanText) return;
 
-    await saveToSheet({
+    const sheetData = {
       text: cleanText,
       productName: extractProductName(cleanText),
       userId,
       timestamp,
       trigger: 'hashtag',
-    }, SHEET_NAME_CANDIDATE, '待評估');
+    };
+
+    const sheetOk = await saveToSheet(sheetData, SHEET_NAME_CANDIDATE, '待評估');
+
+    // forward 到 LT-ERP 候選池（Sheet 寫成功才 forward、避免兩邊不一致）
+    if (sheetOk) {
+      try {
+        await forwardToErp({ ...sheetData, messageId });
+      } catch (e) {
+        // helper 內部已 catch、這層是深度防禦
+        console.error('forwardToErp unexpected error:', e.message);
+      }
+    }
 
     await client.replyMessage({
       replyToken: event.replyToken,
@@ -136,13 +148,26 @@ async function handleEvent(event) {
     const quotedId = event.message?.quotedMessageId;
     if (quotedId && messageCache.has(quotedId)) {
       const original = messageCache.get(quotedId);
-      await saveToSheet({
+      const sheetData = {
         text: original.text,
         productName: extractProductName(original.text),
         userId,
         timestamp,
         trigger: 'reply',
-      }, SHEET_NAME_CANDIDATE, '待評估');
+      };
+
+      const sheetOk = await saveToSheet(sheetData, SHEET_NAME_CANDIDATE, '待評估');
+
+      // forward 到 LT-ERP 候選池（Sheet 寫成功才 forward）
+      // dedup key 用 quotedId (被引用的商品文案 id)、不是當下「選品」這則訊息的 id
+      // 理由：同一商品文案被多人 reply「選品」應視為同一筆候選 → 用商品文案 id 才能 dedup
+      if (sheetOk) {
+        try {
+          await forwardToErp({ ...sheetData, messageId: quotedId });
+        } catch (e) {
+          console.error('forwardToErp unexpected error:', e.message);
+        }
+      }
 
       await client.replyMessage({
         replyToken: event.replyToken,
@@ -201,8 +226,63 @@ async function saveToSheet(data, sheetName = SHEET_NAME, status = '待上架') {
     });
 
     console.log(`Saved to ${sheetName}: ${data.productName}`);
+    return true;
   } catch (err) {
     console.error('Sheet error:', err.message);
+    return false;
+  }
+}
+
+// ── Forward 候選池資料到 LT-ERP Edge Function ──
+// 設計原則 (依 BRIEF + codex review)：
+//   - 只在 #選品 / 「選品」reply 路徑呼叫；#開團 流程不轉發
+//   - 失敗只 log、不 throw、不擋 LINE reply
+//   - env 沒設 → log skip → return（不掛 bot）
+//   - duplicate:true 視為成功（同一 messageId 重送不會壞）
+async function forwardToErp(data) {
+  const url = process.env.ERP_INGEST_URL;
+  const secret = process.env.COMMUNITY_BOT_SECRET;
+
+  if (!url || !secret) {
+    console.log('forwardToErp: skip (ERP_INGEST_URL or COMMUNITY_BOT_SECRET not set)');
+    return;
+  }
+
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Bot-Secret': secret,
+      },
+      body: JSON.stringify({
+        text: data.text,
+        messageId: data.messageId,
+        userId: data.userId,
+        productName: data.productName,
+      }),
+    });
+
+    let result = {};
+    try {
+      result = await resp.json();
+    } catch {
+      // 不是 JSON、忽略
+    }
+
+    if (resp.ok) {
+      // resp.ok 包含 duplicate:true (Edge Function 對 dup 回 200)
+      console.log(
+        `forwardToErp ok: messageId=${data.messageId}, dup=${result.duplicate ?? '?'}, id=${result.id ?? '?'}`
+      );
+    } else {
+      console.error(
+        `forwardToErp http ${resp.status}: messageId=${data.messageId}`,
+        result
+      );
+    }
+  } catch (err) {
+    console.error('forwardToErp error:', err.message);
   }
 }
 
