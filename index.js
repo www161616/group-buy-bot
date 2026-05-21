@@ -68,13 +68,25 @@ async function handleEvent(event) {
     const cleanText = text.replace(/#開團/g, '').trim();
     if (!cleanText) return;
 
-    await saveToSheet({
+    const sheetData = {
       text: cleanText,
       productName: extractProductName(cleanText),
       userId,
       timestamp,
       trigger: 'hashtag',
-    });
+    };
+
+    const sheetOk = await saveToSheet(sheetData);
+
+    // forward 到 LT-ERP 候選池（Sheet 寫成功才 forward、避免兩邊不一致）
+    if (sheetOk) {
+      try {
+        await forwardToErp({ ...sheetData, messageId });
+      } catch (e) {
+        // helper 內部已 catch、這層是深度防禦
+        console.error('forwardToErp unexpected error:', e.message);
+      }
+    }
 
     await client.replyMessage({
       replyToken: event.replyToken,
@@ -234,8 +246,8 @@ async function saveToSheet(data, sheetName = SHEET_NAME, status = '待上架') {
 }
 
 // ── Forward 候選池資料到 LT-ERP Edge Function ──
-// 設計原則 (依 BRIEF + codex review)：
-//   - 只在 #選品 / 「選品」reply 路徑呼叫；#開團 流程不轉發
+// 設計原則：
+//   - hashtag (#開團 / #選品) + 「選品」reply 路徑都呼叫；「開團」reply 不呼叫
 //   - 失敗只 log、不 throw、不擋 LINE reply
 //   - env 沒設 → log skip → return（不掛 bot）
 //   - duplicate:true 視為成功（同一 messageId 重送不會壞）
